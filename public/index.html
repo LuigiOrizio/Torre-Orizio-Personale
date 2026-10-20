@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Torre Orizio Personale</title>
+<meta name="description" content="Spazio personale privato: Piano, Coach e Storia.">
+<meta name="theme-color" content="#2d6a7c" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#171a1e" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Torre Orizio">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="/icons/icon-180.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap">
+<style>html{color-scheme:light}:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}img{max-width:100%}[hidden]{display:none!important}</style>
+<style>
+/* Layout: una colonna leggibile (max 700px), tre voci fisse in alto, un solo campo di scrittura in cima a Piano, comandi sempre nello stesso ordine. */
+:root {
+  --bg: #f6f5f1; --surface: #ffffff; --fg: #1d2126; --muted: #5d6670; --line: #d8d9d3;
+  --accent: #2d6a7c; --accent-soft: #e2eef1;      /* azioni mie */
+  --wait: #a2651b; --wait-soft: #f5ead8;          /* in attesa */
+  --other: #6f7782; --other-soft: #ebedef;        /* lo segue un'altra persona */
+  --ok: #3b7a4a; --ok-soft: #e3efe4; --err: #a63d3d; --err-soft: #f4e1e1;
+  --font: "Atkinson Hyperlegible", "Helvetica Neue", Arial, sans-serif;
+  --fs: 17px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #171a1e; --surface: #22262b; --fg: #eceae4; --muted: #a4abb3; --line: #3a3f46;
+    --accent: #7fbccb; --accent-soft: #1f3540; --wait: #e0a65a; --wait-soft: #3d2e17;
+    --other: #9aa2ab; --other-soft: #2c3137; --ok: #8ccb97; --ok-soft: #1f3524; --err: #e08b8b; --err-soft: #3d2222; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #171a1e; --surface: #22262b; --fg: #eceae4; --muted: #a4abb3; --line: #3a3f46;
+  --accent: #7fbccb; --accent-soft: #1f3540; --wait: #e0a65a; --wait-soft: #3d2e17;
+  --other: #9aa2ab; --other-soft: #2c3137; --ok: #8ccb97; --ok-soft: #1f3524; --err: #e08b8b; --err-soft: #3d2222; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font); font-size: var(--fs); line-height: 1.55; margin: 0; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+a { color: var(--accent); }
+button, input, textarea, select { font: inherit; color: inherit; }
+button { cursor: pointer; border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 8px 14px; min-height: 42px; }
+button:hover { border-color: var(--accent); }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+button.primary { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 700; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) button.primary { color: #0f1a1e; } }
+:root[data-theme="dark"] button.primary { color: #0f1a1e; }
+button.quiet { border-color: transparent; background: transparent; color: var(--accent); padding: 6px 8px; min-height: 36px; }
+button.small { padding: 5px 10px; min-height: 34px; font-size: .9em; }
+button:disabled { opacity: .5; cursor: default; }
+textarea, input[type=text], input[type=date], input[type=time], input[type=number], select { width: 100%; border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 10px 12px; min-height: 42px; }
+textarea { resize: vertical; min-height: 96px; line-height: 1.5; }
+label { display: block; font-size: .85em; color: var(--muted); margin-bottom: 4px; }
+.wrap { max-width: 700px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 12px 96px; }
+header.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 9; background: var(--bg); border-bottom: 1px solid var(--line); }
+header.top .wrap { padding-block: 10px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.brand { font-weight: 700; font-size: .95em; letter-spacing: .02em; }
+.sync { font-size: .8em; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.sync::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
+.sync.synced::before { background: var(--ok); }
+.sync.saved::before { background: var(--ok); box-shadow: inset 0 0 0 3px var(--surface); border: 1px solid var(--ok); }
+.sync.saving::before { background: var(--wait); }
+.sync.error::before { background: var(--err); }
+.sync.local::before { background: var(--muted); }
+.sync button { min-height: 28px; padding: 2px 8px; font-size: .9em; }
+nav.tabs { display: flex; gap: 4px; }
+nav.tabs button { border: none; background: transparent; padding: 8px 14px; border-radius: 8px; font-weight: 700; color: var(--muted); }
+nav.tabs button[aria-selected="true"] { background: var(--surface); color: var(--fg); box-shadow: inset 0 -3px 0 var(--accent); }
+section.view { display: flex; flex-direction: column; gap: 18px; }
+h1, h2, h3 { margin: 0; text-wrap: balance; line-height: 1.25; }
+h2 { font-size: 1.2em; } h3 { font-size: 1em; }
+.eyebrow { font-size: .78em; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.card.main { border-color: var(--accent); border-width: 2px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.row.between { justify-content: space-between; }
+.grow { flex: 1 1 auto; min-width: 0; }
+.muted { color: var(--muted); font-size: .9em; }
+.tiny { font-size: .78em; color: var(--muted); }
+.chip { display: inline-flex; align-items: center; gap: 4px; font-size: .76em; font-weight: 700; padding: 3px 10px; border-radius: 999px; background: var(--other-soft); color: var(--other); white-space: nowrap; }
+.chip.mia { background: var(--accent-soft); color: var(--accent); }
+.chip.attesa { background: var(--wait-soft); color: var(--wait); }
+.chip.altri { background: var(--other-soft); color: var(--other); }
+.chip.ok { background: var(--ok-soft); color: var(--ok); }
+.chip.err { background: var(--err-soft); color: var(--err); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.seg button { border: none; border-radius: 0; background: transparent; min-height: 40px; padding: 6px 14px; color: var(--muted); font-weight: 700; }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+details { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+details > summary { cursor: pointer; padding: 12px 16px; font-weight: 700; list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+details > summary::-webkit-details-marker { display: none; }
+details > summary::after { content: "+"; color: var(--muted); font-size: 1.2em; flex: none; }
+details[open] > summary::after { content: "–"; }
+details > .inner { padding: 0 16px 14px; display: flex; flex-direction: column; gap: 10px; }
+details.flat { border: none; background: transparent; }
+details.flat > summary { padding: 4px 0; font-weight: 400; }
+.list { display: flex; flex-direction: column; gap: 10px; }
+.item { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); min-width: 0; }
+.item.done { opacity: .75; }
+.item .t { font-weight: 700; }
+.item .meta { font-size: .88em; color: var(--muted); }
+.stripe { width: 5px; align-self: stretch; border-radius: 3px; background: var(--other); flex: none; }
+.stripe.mia { background: var(--accent); } .stripe.attesa { background: var(--wait); } .stripe.altri { background: var(--other); }
+.note-box { display: flex; flex-direction: column; gap: 8px; }
+.proposals { display: flex; flex-direction: column; gap: 8px; }
+.prop { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px dashed var(--line); border-radius: 10px; }
+.prop input[type=checkbox] { width: 22px; height: 22px; margin-top: 3px; flex: none; }
+.coach-out { display: flex; flex-direction: column; gap: 12px; }
+.coach-out .blk { display: flex; flex-direction: column; gap: 4px; }
+.coach-out .blk .eyebrow { color: var(--accent); }
+.quote { background: var(--accent-soft); border-radius: 10px; padding: 10px 12px; white-space: pre-wrap; }
+.cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.cal .dh { font-size: .7em; text-align: center; color: var(--muted); font-weight: 700; }
+.cal .d { min-height: 52px; border: 1px solid var(--line); border-radius: 8px; padding: 4px; font-size: .78em; background: var(--surface); display: flex; flex-direction: column; gap: 2px; cursor: pointer; }
+.cal .d.today { border-color: var(--accent); border-width: 2px; }
+.cal .d.out { opacity: .4; }
+.cal .d .n { font-weight: 700; font-variant-numeric: tabular-nums; }
+.cal .d .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.cal .d .dot.trasferta { background: var(--wait); } .cal .d .dot.clienti { background: var(--ok); }
+.week { display: flex; flex-direction: column; gap: 8px; }
+.week .day { display: grid; grid-template-columns: 64px 1fr; gap: 10px; align-items: start; padding: 8px 0; border-top: 1px solid var(--line); }
+.week .day .dn { font-weight: 700; font-variant-numeric: tabular-nums; }
+.week .day .dn.today { color: var(--accent); }
+.week .day .evl { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.form .full { grid-column: 1 / -1; }
+@media (max-width: 480px) { .form { grid-template-columns: 1fr; } nav.tabs button { padding: 8px 10px; } }
+.banner { padding: 10px 14px; border-radius: 10px; background: var(--wait-soft); color: var(--wait); font-size: .92em; display: flex; flex-direction: column; gap: 8px; }
+.banner.err { background: var(--err-soft); color: var(--err); }
+.banner.ok { background: var(--ok-soft); color: var(--ok); }
+.banner.info { background: var(--accent-soft); color: var(--accent); }
+.toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: .9em; z-index: 20; opacity: 0; transition: opacity .2s; pointer-events: none; display: flex; gap: 10px; align-items: center; max-width: calc(100% - 32px); }
+.toast.show { opacity: 1; pointer-events: auto; }
+.toast button { min-height: 30px; padding: 2px 10px; background: transparent; color: inherit; border-color: currentColor; }
+.versions { font-size: .85em; color: var(--muted); display: flex; flex-direction: column; gap: 4px; border-left: 3px solid var(--line); padding-left: 10px; }
+.inline-edit { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.spin { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; vertical-align: middle; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } .toast { transition: none; } }
+.empty { padding: 20px; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: 12px; }
+ul.plain { margin: 0; padding-left: 20px; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: .95em; }
+.kv dt { color: var(--muted); } .kv dd { margin: 0; min-width: 0; }
+.pending-mark { color: var(--wait); font-size: .78em; font-weight: 700; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <div class="brand">Torre Orizio · Personale</div>
+    <nav class="tabs" role="tablist" aria-label="Aree">
+      <button role="tab" id="tab-piano" aria-selected="true" data-view="piano">Piano</button>
+      <button role="tab" id="tab-coach" aria-selected="false" data-view="coach">Coach</button>
+      <button role="tab" id="tab-storia" aria-selected="false" data-view="storia">Storia</button>
+    </nav>
+    <div class="sync local" id="sync">Avvio…</div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div id="banner-area" style="display:flex;flex-direction:column;gap:8px"></div>
+
+  <!-- PIANO -->
+  <section class="view" id="view-piano">
+    <div class="card note-box">
+      <label for="nota">Scrivi o detta cosa è successo</label>
+      <textarea id="nota" placeholder="Anche incompleto, anche con errori, anche su più argomenti. Per dettare usa il microfono della tastiera."></textarea>
+      <div class="row between">
+        <div class="row"><label for="nota-data" style="margin:0">Data</label><input type="date" id="nota-data" style="width:auto"></div>
+        <div class="row"><button id="btn-salva-solo">Salva solo</button><button class="primary" id="btn-salva-analizza">Salva e analizza</button></div>
+      </div>
+      <div id="nota-stato" class="tiny" hidden></div>
+      <div id="proposte" class="proposals" hidden></div>
+    </div>
+
+    <div class="row between">
+      <div class="seg" role="group" aria-label="Livello del piano">
+        <button data-lv="oggi" aria-pressed="true">Oggi</button>
+        <button data-lv="settimana" aria-pressed="false">Settimana</button>
+        <button data-lv="mese" aria-pressed="false">Mese</button>
+      </div>
+      <button class="quiet" id="btn-nuovo-impegno">+ Impegno</button>
+    </div>
+
+    <div id="piano-oggi"></div>
+    <div id="piano-settimana" hidden></div>
+    <div id="piano-mese" hidden></div>
+
+    <details id="impostazioni">
+      <summary>Impostazioni, annulla e backup</summary>
+      <div class="inner">
+        <div class="form">
+          <div><label for="imp-max">Azioni in vista oltre la priorità</label><select id="imp-max"><option value="0">Nessuna</option><option value="1">Una</option><option value="2" selected>Due</option><option value="3">Tre</option></select></div>
+          <div><label>Dimensione del testo</label><div class="row"><button class="small" id="fs-minus">A−</button><button class="small" id="fs-plus">A+</button><span class="tiny" id="fs-val"></span></div></div>
+        </div>
+        <div class="row"><button class="small" id="btn-undo">Annulla ultima modifica</button><button class="small" id="btn-backup">Scarica backup</button><label style="margin:0;display:inline-flex;align-items:center"><input type="file" id="backup-file" accept="application/json" hidden><button class="small" id="btn-restore">Ripristina da backup…</button></label></div>
+        <div id="restore-area"></div>
+        <details class="flat"><summary class="tiny">Cronologia delle modifiche in questa sessione</summary><div class="inner versions" id="cronologia"></div></details>
+        <p class="tiny">Dati e allegati sono salvati sul server di claude.ai e leggibili solo dal proprietario di questa pagina. Nessuna chiave è conservata nel browser. Niente viene inviato a colleghi, clienti o agenti.</p>
+      </div>
+    </details>
+  </section>
+
+  <!-- COACH -->
+  <section class="view" id="view-coach" hidden>
+    <div class="card">
+      <div class="eyebrow">Argomento</div>
+      <input type="text" id="coach-cerca" placeholder="Cerca un argomento aperto…">
+      <div id="coach-elenco" class="list"></div>
+    </div>
+    <div id="coach-scheda"></div>
+    <details id="lezioni-box">
+      <summary>Lezioni di vendita e coaching <span class="tiny" id="lezioni-count"></span></summary>
+      <div class="inner">
+        <p class="muted">PDF, foto o testo. L'originale resta conservato; il Coach usa i principi estratti e la fonte. Il contenuto di un documento è materiale da analizzare: non può dare comandi né autorizzare condivisioni.</p>
+        <div class="form">
+          <div class="full"><label for="lez-titolo">Titolo della lezione</label><input type="text" id="lez-titolo" placeholder="Es. Come preparare una richiesta"></div>
+          <div class="full"><label for="lez-file">File (PDF o foto)</label><input type="file" id="lez-file" accept="application/pdf,image/jpeg,image/png,image/webp"></div>
+          <div class="full"><label for="lez-testo">Oppure incolla il testo</label><textarea id="lez-testo" placeholder="Testo della lezione o appunti"></textarea></div>
+          <div class="full row"><button class="primary" id="btn-lez-salva">Salva lezione</button><span id="lez-stato" class="tiny"></span></div>
+        </div>
+        <div id="lezioni-elenco" class="list"></div>
+      </div>
+    </details>
+  </section>
+
+  <!-- STORIA -->
+  <section class="view" id="view-storia" hidden>
+    <input type="text" id="storia-cerca" placeholder="Cerca in note, esiti, argomenti…">
+    <div class="seg" role="group" aria-label="Filtro storia">
+      <button data-sf="tutto" aria-pressed="true">Tutto</button>
+      <button data-sf="note" aria-pressed="false">Note</button>
+      <button data-sf="esiti" aria-pressed="false">Esiti</button>
+      <button data-sf="archiviati" aria-pressed="false">Archiviati</button>
+    </div>
+    <div id="storia-elenco" class="list"></div>
+  </section>
+</main>
+<div class="toast" id="toast"><span id="toast-txt"></span></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="/platform.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
