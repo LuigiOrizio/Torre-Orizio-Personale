@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Torre Orizio Personale · Accesso</title>
+<meta name="theme-color" content="#2d6a7c">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="/icons/icon-180.png">
+<style>
+:root { --bg:#f6f5f1; --surface:#fff; --fg:#1d2126; --muted:#5d6670; --line:#d8d9d3; --accent:#2d6a7c; --err:#a63d3d; --err-soft:#f4e1e1; color-scheme: light; }
+@media (prefers-color-scheme: dark) { :root { --bg:#171a1e; --surface:#22262b; --fg:#eceae4; --muted:#a4abb3; --line:#3a3f46; --accent:#7fbccb; --err:#e08b8b; --err-soft:#3d2222; color-scheme: dark; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: "Atkinson Hyperlegible", "Helvetica Neue", Arial, sans-serif; font-size: 17px; line-height: 1.5; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: max(16px, env(safe-area-inset-left)) }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 24px; width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 14px; }
+h1 { margin: 0; font-size: 1.2em; }
+label { font-size: .85em; color: var(--muted); display: block; margin-bottom: 4px; }
+input { width: 100%; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px; min-height: 46px; }
+button { font: inherit; font-weight: 700; color: #fff; background: var(--accent); border: 1px solid var(--accent); border-radius: 8px; padding: 12px; min-height: 46px; cursor: pointer; }
+@media (prefers-color-scheme: dark) { button { color: #0f1a1e; } }
+.err { background: var(--err-soft); color: var(--err); border-radius: 8px; padding: 10px 12px; font-size: .92em; }
+.tiny { font-size: .78em; color: var(--muted); }
+</style>
+</head>
+<body>
+<form class="card" id="f" autocomplete="on">
+  <h1>Torre Orizio · Personale</h1>
+  <div><label for="p">Parola d'accesso</label><input id="p" name="password" type="password" autocomplete="current-password" required autofocus></div>
+  <button type="submit" id="b">Entra</button>
+  <div class="err" id="e" hidden></div>
+  <div class="tiny">Spazio privato. L'accesso resta attivo su questo dispositivo per sei mesi, finché non premi «Esci» nelle impostazioni.</div>
+</form>
+<script src="/login.js"></script>
+</body>
+</html>
