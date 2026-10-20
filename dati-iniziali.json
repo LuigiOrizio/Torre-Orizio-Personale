@@ -1,0 +1,23 @@
+{
+  "formato": "torre-orizio-personale/1",
+  "esportato": "2026-10-20T09:05:25Z",
+  "profilo": {
+    "orario": "09:00-17:30 quando è in azienda (pausa pranzo, giorni di presenza e trasferte non indicati)",
+    "max_azioni": 2,
+    "metodo": "Mese: fino a tre risultati complessivi. Settimana: fino a tre passi verificabili. Giorno: un risultato principale e fino a due azioni. Configurazione iniziale da adattare, non una regola.",
+    "persone": [
+      {"nome": "Direttore commerciale", "ruolo": "gestisce anche personale e risorse umane; priorità commerciali, disponibilità e organizzazione delle risorse (nome non indicato)"},
+      {"nome": "Titolare (padre di Luigi)", "ruolo": "capo dell'azienda; priorità e decisioni di sua competenza"},
+      {"nome": "Emilio", "ruolo": "esperto di tessuti e filati, sviluppi tecnici e ingegneristici dagli anni Novanta; invia richieste di campionatura con specifiche"},
+      {"nome": "Diego", "ruolo": "responsabile officina; movimenti e funzionamento meccanico delle macchine"},
+      {"nome": "Matteo", "ruolo": "responsabile acquisti e magazzino; ordina pezzi e segue la costruzione delle macchine"},
+      {"nome": "Gabriele", "ruolo": "tecnico/campionatore, spesso trasfertista; parla anche con i clienti (una sola persona con più funzioni)"},
+      {"nome": "Bignotti", "ruolo": "tecnico/campionatore"},
+      {"nome": "Simone", "ruolo": "tecnico/campionatore"},
+      {"nome": "Andrea di Prato", "ruolo": "meccanico che visita i maglifici della zona di Prato"},
+      {"nome": "Mirco", "ruolo": "consulente tessile nelle zone di Biella, Veruno e Milano"},
+      {"nome": "Luigi", "ruolo": "vendite Italia, coordinamento progetti, visite ispettive internazionali"}
+    ]
+  },
+  "argomenti": [], "impegni": [], "note": [], "lezioni": [], "obiettivi": [], "eventi": [], "giorni": []
+}

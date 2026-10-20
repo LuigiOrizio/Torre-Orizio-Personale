@@ -1,0 +1,25 @@
+# Fly.io (alternativa a Railway): `fly launch --copy-config --no-deploy`, poi `fly volumes create dati --size 1`,
+# `fly secrets set PASSPHRASE=... ANTHROPIC_API_KEY=...`, `fly deploy`.
+app = "torre-orizio-personale"
+primary_region = "fra"
+
+[build]
+
+[env]
+  PORT = "8080"
+  DATA_DIR = "/data"
+
+[[mounts]]
+  source = "dati"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
