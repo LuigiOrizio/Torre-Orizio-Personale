@@ -65,7 +65,18 @@ function backupSnapshot(withAssets) {
 function restoreBackup(bk, modalita) {
   const r = { nuovi: 0, aggiornati: 0, saltati: 0, allegati: 0, allegati_esistenti: 0 };
   if (!bk || typeof bk !== "object" || !String(bk.formato || "").startsWith("torre-orizio-personale/")) return { error: "formato" };
-  const docs = []; if (bk.profilo && typeof bk.profilo === "object") docs.push(["impostazioni", "profilo", bk.profilo]);
+  const docs = [];
+  // Profilo: unione con quello esistente, in entrambe le modalità (mai sostituzione in blocco).
+  if (bk.profilo && typeof bk.profilo === "object" && !Array.isArray(bk.profilo)) {
+    const curP = db.docs["impostazioni/profilo"]; const curd = (curP && !curP.deleted && curP.data) ? curP.data : {};
+    const p = Object.assign({}, curd, bk.profilo);
+    const nuove = Array.isArray(bk.profilo.persone) ? bk.profilo.persone.filter(x => x && typeof x.nome === "string") : [];
+    const nomi = new Set(nuove.map(x => x.nome.trim().toLowerCase()));
+    p.persone = nuove.concat((Array.isArray(curd.persone) ? curd.persone : []).filter(x => x && typeof x.nome === "string" && !nomi.has(x.nome.trim().toLowerCase())));
+    if (curd.max_azioni != null) p.max_azioni = curd.max_azioni;
+    p.profilo_versioni = (Array.isArray(curd.profilo_versioni) ? curd.profilo_versioni : []).concat([{ quando: new Date().toISOString(), cosa: "Profilo unito con backup del " + (bk.esportato || "?"), persone_prima: (Array.isArray(curd.persone) ? curd.persone : []).length }]).slice(-20);
+    putDoc("impostazioni", "profilo", p); r.profilo_persone = p.persone.length;
+  }
   for (const c of COLLS) for (const d of (Array.isArray(bk[c]) ? bk[c] : [])) if (d && typeof d === "object" && typeof d.id === "string" && SAFE_ID.test(d.id)) { const dd = Object.assign({}, d); delete dd._pending; delete dd._readonly; docs.push([c, d.id, dd]); }
   for (const [c, id, d] of docs) {
     const cur = db.docs[c + "/" + id]; const exists = cur && !cur.deleted;
