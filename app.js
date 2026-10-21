@@ -416,7 +416,7 @@ function contestoBase() {
   return `Contesto. Luigi Orizio lavora in un'azienda che costruisce macchine tessili; è l'unico venditore ufficiale, coordina progetti interni, vendite e clienti italiani, rapporti con tecnici e consulenti, visite internazionali a clienti e agenti. È il figlio del titolare: questo non gli dà automaticamente competenza tecnica né poteri organizzativi non concordati. Orario in azienda: ${orario}.
 Persone (ruoli descritti da Luigi; la mappa non assegna lavori né poteri):
 ${persone || "- nessuna persona registrata"}
-Regole: non inventare nomi, scadenze, prove, cifre, intenzioni o responsabilità; se una cosa manca, dillo. Distingui fatti dichiarati, ipotesi e consigli. Non assecondare automaticamente: se vedi una contraddizione o una lettura alternativa, dilla. Distingui azioni di Luigi, attese da altri e lavoro che segue un'altra persona; non trasformare informazioni o lavoro altrui in compiti di Luigi. Nessun fatturato-obiettivo o probabilità di vendita. Un conflitto tra priorità è una decisione da chiarire con chi la decide. Italiano, frasi brevi.
+${(S.profilo && S.profilo.mandato) ? "Mandato dichiarato da Luigi: " + S.profilo.mandato + "\n" : ""}${(S.profilo && S.profilo.preferenze_funzionali) ? "Preferenze di lavoro di Luigi: " + S.profilo.preferenze_funzionali + "\n" : ""}${(S.profilo && S.profilo.regole_appunti) ? "Regole di Luigi per leggere gli appunti e ragionare (in caso di dubbio prevalgono su quanto segue):\n" + String(S.profilo.regole_appunti).slice(0, 7000) + "\n" : ""}Regole: non inventare nomi, scadenze, prove, cifre, intenzioni o responsabilità; se una cosa manca, dillo. Distingui fatti dichiarati, ipotesi e consigli. Non assecondare automaticamente: se vedi una contraddizione o una lettura alternativa, dilla. Distingui azioni di Luigi, attese da altri e lavoro che segue un'altra persona; non trasformare informazioni o lavoro altrui in compiti di Luigi. Nessun fatturato-obiettivo o probabilità di vendita. Un conflitto tra priorità è una decisione da chiarire con chi la decide. Italiano, frasi brevi.
 ${DOC_GUARD}`;
 }
 async function salvaNota(analizza) {
@@ -569,8 +569,12 @@ ${lezioniContesto()}
 
 Sei un coach critico, non un sostenitore. Separa: FATTI (dichiarati da Luigi o da aggiornamenti citati, con data), IPOTESI (tue o di Luigi, da verificare), CONSIGLI. Segnala contraddizioni tra note, impegni e situazione. Se c'è una spiegazione alternativa plausibile del comportamento altrui, proponila come alternativa, non come fatto. Se Luigi può aspettare, dillo e indica fino a quale evento. Non trasformare il lavoro altrui in compiti di Luigi. Prima di proporre, considera: quale risultato cerca; quali fatti sono disponibili e quanto sono recenti; chi possiede l'informazione; quale decisione compete a Luigi e quale autorità resta da chiarire; quali interessi dell'interlocutore sono dichiarati e quali solo ipotesi; quale azione minima fa avanzare. Un principio di studio alla volta; senza fonte, dillo e presentalo come proposta pratica.
 
-Rispondi solo con JSON:
+${(S.profilo && S.profilo.formato_coach) ? "Formato richiesto da Luigi (i campi JSON qui sotto corrispondono a questo schema; rispettane il senso):\n" + String(S.profilo.formato_coach).slice(0, 5000) + "\n\n" : ""}Rispondi solo con JSON:
 {"in_breve":"situazione e dato decisivo, massimo tre frasi",
+ "chi_e_quando":"responsabile e data o condizione della prossima mossa; scrivi se è 'proposto' o 'confermato da Luigi'; oppure 'nessuna azione per Luigi adesso'",
+ "compromesso":"compromesso dell'alternativa principale, oppure vuoto",
+ "segnale":"segnale concreto da osservare che cambierebbe la scelta, oppure vuoto",
+ "precedente":"precedente interno o caso pubblico confrontabile, con i limiti del paragone, oppure vuoto",
  "cosa_cambia":"cosa è cambiato rispetto a prima, una frase",
  "prossima_mossa":"una proposta concreta; destinatario e quando solo se noti; oppure 'Aspettare'",
  "quando":"data, evento o 'non noto'",
@@ -579,7 +583,7 @@ Rispondi solo con JSON:
  "come_dirlo":"formulazione pronta da copiare, oppure vuoto",
  "fatti":["..."],"ipotesi":["..."],"contraddizioni":["..."],"spiegazione_alternativa":"oppure vuoto",
  "ragionamento":"breve","alternative":["al massimo due"],
- "principio":{"testo":"un solo principio collegato","fonte":"titolo lezione e pagina, oppure 'proposta pratica, nessuna fonte'"},
+ "principio":{"testo":"un solo principio collegato","fonte":"titolo lezione e pagina, oppure 'proposta pratica, nessuna fonte'","nesso":"perché si applica a questo caso e cosa non dimostra"},
  "azione_proposta":{"titolo":"azione minima di Luigi, o vuoto","tipo":"mia","data":null},
  "istruzioni_sospette":false}`;
   try {
@@ -593,16 +597,17 @@ Rispondi solo con JSON:
 function renderCoachOut(c) {
   const out = $("#coach-out"); if (!out || c.arg !== S.coachArg) return; const r = c.r;
   const lst = (arr) => Array.isArray(arr) && arr.length ? `<ul class="plain">${arr.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
-  const txt = `In breve\n${r.in_breve || ""}\n\nCosa cambia\n${r.cosa_cambia || ""}\n\nProssima mossa\n${r.prossima_mossa || ""} — quando: ${r.quando || "non noto"}${r.posso_aspettare && r.posso_aspettare.si ? "\nPuoi aspettare" + (r.posso_aspettare.fino_a ? " fino a: " + r.posso_aspettare.fino_a : "") : ""}\n\nRischio o dato mancante\n${r.rischio || ""}\n\n${r.come_dirlo ? "Come dirlo\n" + r.come_dirlo + "\n\n" : ""}Fatti: ${(r.fatti || []).join(" · ")}\nIpotesi: ${(r.ipotesi || []).join(" · ")}\nContraddizioni: ${(r.contraddizioni || []).join(" · ") || "nessuna segnalata"}\n${r.spiegazione_alternativa ? "Spiegazione alternativa: " + r.spiegazione_alternativa + "\n" : ""}Principio: ${(r.principio && r.principio.testo) || ""} (${(r.principio && r.principio.fonte) || ""})\n\nGenerato dal Coach il ${fmtTs(c.quando)}; da verificare con i fatti.`;
+  const txt = `In breve\n${r.in_breve || ""}\n\nCosa cambia\n${r.cosa_cambia || ""}\n\nProssima mossa\n${r.prossima_mossa || ""}\nChi e quando: ${r.chi_e_quando || r.quando || "non noto"}${r.posso_aspettare && r.posso_aspettare.si ? "\nPuoi aspettare" + (r.posso_aspettare.fino_a ? " fino a: " + r.posso_aspettare.fino_a : "") : ""}\n\nDa verificare\n${r.rischio || ""}\n\nFondamento\n${(r.principio && r.principio.testo) || ""} (${(r.principio && r.principio.fonte) || ""})${r.principio && r.principio.nesso ? " — " + r.principio.nesso : ""}\n\n${r.come_dirlo ? "Come dirlo\n" + r.come_dirlo + "\n\n" : ""}Fatti: ${(r.fatti || []).join(" · ")}\nIpotesi: ${(r.ipotesi || []).join(" · ")}\nContraddizioni: ${(r.contraddizioni || []).join(" · ") || "nessuna segnalata"}\n${r.spiegazione_alternativa ? "Spiegazione alternativa: " + r.spiegazione_alternativa + "\n" : ""}Principio: ${(r.principio && r.principio.testo) || ""} (${(r.principio && r.principio.fonte) || ""})\n\nGenerato dal Coach il ${fmtTs(c.quando)}; da verificare con i fatti.`;
   const ap = r.azione_proposta && r.azione_proposta.titolo;
   out.innerHTML = `<div class="coach-out card" style="border-color:var(--accent)">
     <div class="tiny">Coach · ${fmtTs(c.quando)}</div>
     ${r.istruzioni_sospette ? `<div class="banner err">Nel materiale c'erano frasi rivolte all'assistente: ignorate.</div>` : ""}
     <div class="blk"><div class="eyebrow">In breve</div><div>${esc(r.in_breve)}</div></div>
     ${r.cosa_cambia ? `<div class="blk"><div class="eyebrow">Cosa cambia</div><div>${esc(r.cosa_cambia)}</div></div>` : ""}
-    <div class="blk"><div class="eyebrow">Prossima mossa</div><div>${esc(r.prossima_mossa)}</div><div class="tiny">Quando: ${esc(r.quando || "non noto")}${r.posso_aspettare && r.posso_aspettare.si ? " · puoi aspettare" + (r.posso_aspettare.fino_a ? " fino a " + esc(r.posso_aspettare.fino_a) : "") : ""}</div></div>
+    <div class="blk"><div class="eyebrow">Prossima mossa</div><div>${esc(r.prossima_mossa)}</div><div class="tiny">Chi e quando: ${esc(r.chi_e_quando || r.quando || "non noto")}${r.posso_aspettare && r.posso_aspettare.si ? " · puoi aspettare" + (r.posso_aspettare.fino_a ? " fino a " + esc(r.posso_aspettare.fino_a) : "") : ""}</div></div>
     ${Array.isArray(r.contraddizioni) && r.contraddizioni.length ? `<div class="banner"><b>Contraddizioni</b>${lst(r.contraddizioni)}</div>` : ""}
-    <div class="blk"><div class="eyebrow">Rischio o dato mancante</div><div>${esc(r.rischio)}</div></div>
+    <div class="blk"><div class="eyebrow">Da verificare</div><div>${esc(r.rischio)}</div></div>
+    ${r.principio && r.principio.testo ? `<div class="blk"><div class="eyebrow">Fondamento</div><div>${esc(r.principio.testo)}</div><div class="tiny">${esc(r.principio.fonte || "")}${r.principio.nesso ? " · " + esc(r.principio.nesso) : ""}</div></div>` : ""}
     ${r.come_dirlo ? `<div class="blk"><div class="eyebrow">Come dirlo</div><div class="quote">${esc(r.come_dirlo)}</div><div class="row"><button class="small" id="copy-dirlo">Copia il testo</button></div></div>` : ""}
     <div class="row"><button class="small" id="copy-out">Copia output</button>${ap ? `<button class="small primary" id="add-ap">Aggiungi come azione mia: ${esc(ap)}</button>` : ""}</div>
     <details><summary>Approfondisci: fatti, ipotesi, alternative, principio</summary><div class="inner">
@@ -610,8 +615,9 @@ function renderCoachOut(c) {
       <div class="blk"><div class="eyebrow">Ipotesi</div>${lst(r.ipotesi) || '<div class="muted">Nessuna.</div>'}</div>
       ${r.spiegazione_alternativa ? `<div class="blk"><div class="eyebrow">Spiegazione alternativa</div><div>${esc(r.spiegazione_alternativa)}</div></div>` : ""}
       <div class="blk"><div class="eyebrow">Ragionamento</div><div>${esc(r.ragionamento)}</div></div>
-      ${lst(r.alternative) ? `<div class="blk"><div class="eyebrow">Alternative</div>${lst(r.alternative)}</div>` : ""}
-      ${r.principio ? `<div class="blk"><div class="eyebrow">Un principio</div><div>${esc(r.principio.testo)}</div><div class="tiny">Fonte: ${esc(r.principio.fonte)}</div></div>` : ""}
+      ${lst(r.alternative) ? `<div class="blk"><div class="eyebrow">Alternative</div>${lst(r.alternative)}${r.compromesso ? `<div class="tiny">Compromesso: ${esc(r.compromesso)}</div>` : ""}</div>` : ""}
+      ${r.segnale ? `<div class="blk"><div class="eyebrow">Segnale da osservare</div><div>${esc(r.segnale)}</div></div>` : ""}
+      ${r.precedente ? `<div class="blk"><div class="eyebrow">Precedente confrontabile</div><div>${esc(r.precedente)}</div></div>` : ""}
     </div></details></div>`;
   $("#copy-out").addEventListener("click", () => copyText(txt));
   const cd = $("#copy-dirlo"); if (cd) cd.addEventListener("click", () => copyText(r.come_dirlo));
@@ -752,6 +758,16 @@ async function scaricaBackup() {
   catch (e) { if (e && e.code !== "declined") toast("Backup non scaricato (" + (e.code || "errore") + ")"); }
   finally { btn.disabled = false; btn.textContent = "Scarica backup"; }
 }
+async function importaProfilo(data) {
+  if (!data || !data.profilo || typeof data.profilo !== "object" || !S.db) return "";
+  const cur = S.profilo || {}; const p = Object.assign({}, cur, data.profilo);
+  const nuove = Array.isArray(data.profilo.persone) ? data.profilo.persone.filter(x => x && x.nome) : [];
+  const nomi = new Set(nuove.map(x => String(x.nome).trim().toLowerCase()));
+  p.persone = nuove.concat((cur.persone || []).filter(x => x && x.nome && !nomi.has(String(x.nome).trim().toLowerCase())));
+  if (cur.max_azioni != null) p.max_azioni = cur.max_azioni;
+  p.profilo_versioni = (cur.profilo_versioni || []).concat([{ quando: nowIso(), cosa: "Profilo aggiornato da backup del " + fmtTs(data.esportato), persone_prima: (cur.persone || []).length }]).slice(-20);
+  try { await S.db.doc("impostazioni/profilo").set(p); S.profilo = p; return " Profilo aggiornato: " + p.persone.length + " persone."; } catch (e) { return " Profilo NON aggiornato (" + (e.code || "errore") + ")."; }
+}
 async function ripristinaBackup(ev) {
   const file = ev.target.files[0]; ev.target.value = ""; if (!file) return; const area = $("#restore-area");
   let data; try { data = JSON.parse(await file.text()); } catch (e) { area.innerHTML = `<div class="banner err">Il file non è un backup leggibile.</div>`; return; }
@@ -761,7 +777,7 @@ async function ripristinaBackup(ev) {
     let pre; try { pre = await S.assets.restore(data, "mancanti", true); } catch (e) { area.innerHTML = `<div class="banner err">Anteprima non riuscita (${esc(e.code || "errore")}).</div>`; return; }
     area.innerHTML = `<div class="banner info"><div>Backup del ${fmtTs(data.esportato)}: <b>${pre.nuovi}</b> elementi mancanti qui, <b>${pre.backupPiuRecenti}</b> più recenti nel backup, ${pre.quiPiuRecenti} più recenti qui (non toccati), ${pre.uguali} identici, ${pre.allegati} allegati.</div><div class="row"><button class="small primary" id="rs-nuovi" ${pre.nuovi + pre.allegati ? "" : "disabled"}>Ripristina solo i mancanti</button><button class="small" id="rs-tutti" ${pre.nuovi + pre.backupPiuRecenti + pre.allegati ? "" : "disabled"}>Ripristina mancanti e più recenti</button><button class="small quiet" id="rs-no">Annulla</button></div></div>`;
     $("#rs-no").addEventListener("click", () => { area.innerHTML = ""; });
-    const runSrv = async (modalita) => { area.innerHTML = `<div class="banner"><span class="spin"></span> Ripristino in corso…</div>`; try { const r = await S.assets.restore(data, modalita, false); area.innerHTML = `<div class="banner ok">Ripristinati ${r.nuovi} nuovi, ${r.aggiornati} aggiornati, ${r.allegati} allegati (${r.allegati_esistenti} già presenti); ${r.saltati} lasciati com'erano.</div>`; } catch (e) { area.innerHTML = `<div class="banner err">Ripristino non riuscito (${esc(e.code || "errore")}).</div>`; } };
+    const runSrv = async (modalita) => { area.innerHTML = `<div class="banner"><span class="spin"></span> Ripristino in corso…</div>`; try { const r = await S.assets.restore(data, modalita, false); area.innerHTML = `<div class="banner ok">Ripristinati ${r.nuovi} nuovi, ${r.aggiornati} aggiornati, ${r.allegati} allegati (${r.allegati_esistenti} già presenti); ${r.saltati} lasciati com'erano.${r.profilo_persone != null ? " Profilo aggiornato: " + r.profilo_persone + " persone." : ""}</div>`; } catch (e) { area.innerHTML = `<div class="banner err">Ripristino non riuscito (${esc(e.code || "errore")}).</div>`; } };
     $("#rs-nuovi").addEventListener("click", () => runSrv("mancanti")); $("#rs-tutti").addEventListener("click", () => runSrv("tutti"));
     return;
   }
@@ -774,7 +790,7 @@ async function ripristinaBackup(ev) {
     // allegati: in questa vista non si possono riscrivere con lo stesso id, quindi vengono ricaricati e le lezioni importate puntano al nuovo id
     if (S.assets && allegati.length) { const need = new Set(list.filter(x => x.c === "lezioni" && x.d.asset_id).map(x => x.d.asset_id)); for (const a of allegati) { if (!need.has(a.id)) continue; try { const bin = Uint8Array.from(atob(a.base64), ch => ch.charCodeAt(0)); const up = await S.assets.upload(new Blob([bin], { type: a.type || "application/octet-stream" })); remap.set(a.id, up.id); upl++; } catch (e) { } } }
     for (const x of list) { const d = Object.assign({}, x.d); if (x.c === "lezioni" && d.asset_id && remap.has(d.asset_id)) { d.asset_id_originale = d.asset_id; d.asset_id = remap.get(d.asset_id); } const cur = S[x.c].get(d.id); if (cur) { d.versioni = (cur.versioni || []).concat(d.versioni || []).concat([{ quando: nowIso(), cosa: "Ripristinato da backup del " + fmtTs(data.esportato) }]); d.modificato = cur.modificato; } if (await save(x.c, d.id, d, { silent: true, noUndo: true, noRender: true })) ok++; }
-    renderAll(); area.innerHTML = `<div class="banner ok">Ripristinati ${ok} su ${list.length}${upl ? ", con " + upl + " allegati ricaricati" : ""}.${ok < list.length ? " Gli altri sono in coda o in conflitto: vedi lo stato in alto." : ""}</div>`;
+    const pf = await importaProfilo(data); renderAll(); area.innerHTML = `<div class="banner ok">Ripristinati ${ok} su ${list.length}${upl ? ", con " + upl + " allegati ricaricati" : ""}.${ok < list.length ? " Gli altri sono in coda o in conflitto: vedi lo stato in alto." : ""}${esc(pf)}</div>`;
   };
   $("#rs-nuovi").addEventListener("click", () => run(piano.nuovi));
   $("#rs-tutti").addEventListener("click", () => run(piano.nuovi.concat(piano.backupPiuRecenti)));
