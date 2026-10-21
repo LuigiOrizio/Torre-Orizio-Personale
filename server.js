@@ -12,6 +12,7 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 const PASSPHRASE = process.env.PASSPHRASE || "";
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5-5";
+const ANTHROPIC_WORKSPACE_ID = String(process.env.ANTHROPIC_WORKSPACE_ID || "").trim(); // chiavi utente (sk-ant-usr-…): Anthropic richiede l'ID dell'area di lavoro
 const ANTHROPIC_BASE_URL = (process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com").replace(/\/$/, "");
 const SECURE_COOKIE = process.env.INSECURE_COOKIE !== "1"; // metti INSECURE_COOKIE=1 solo per prove in locale senza https
 const SESSION_DAYS = Number(process.env.SESSION_DAYS || 180);
@@ -125,7 +126,7 @@ async function coach(body) {
   const system = "Sei il Coach privato di Luigi Orizio dentro la sua app personale. Rispondi in italiano. " + (wantJson ? "Rispondi SOLO con un valore JSON valido, senza testo prima o dopo e senza blocchi di codice." : "");
   const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 170000);
   try {
-    const r = await fetch(ANTHROPIC_BASE_URL + "/v1/messages", { method: "POST", signal: ctl.signal, headers: { "content-type": "application/json", "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" }, body: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: 4000, system, messages }) });
+    const r = await fetch(ANTHROPIC_BASE_URL + "/v1/messages", { method: "POST", signal: ctl.signal, headers: Object.assign({ "content-type": "application/json", "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" }, ANTHROPIC_WORKSPACE_ID ? { "anthropic-workspace-id": ANTHROPIC_WORKSPACE_ID } : {}), body: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: 4000, system, messages }) });
     const txt = await r.text();
     if (!r.ok) { console.error("anthropic", r.status, txt.slice(0, 300)); return { error: r.status === 429 ? "rate_limited" : r.status === 401 || r.status === 403 ? "not_configured" : "upstream_error", status: r.status }; }
     const data = JSON.parse(txt); const text = (data.content || []).filter(c => c.type === "text").map(c => c.text).join("\n").trim();
