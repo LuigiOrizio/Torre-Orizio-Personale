@@ -416,7 +416,7 @@ function contestoBase() {
   return `Contesto. Luigi Orizio lavora in un'azienda che costruisce macchine tessili; è l'unico venditore ufficiale, coordina progetti interni, vendite e clienti italiani, rapporti con tecnici e consulenti, visite internazionali a clienti e agenti. È il figlio del titolare: questo non gli dà automaticamente competenza tecnica né poteri organizzativi non concordati. Orario in azienda: ${orario}.
 Persone (ruoli descritti da Luigi; la mappa non assegna lavori né poteri):
 ${persone || "- nessuna persona registrata"}
-${(S.profilo && S.profilo.mandato) ? "Mandato dichiarato da Luigi: " + S.profilo.mandato + "\n" : ""}${(S.profilo && S.profilo.preferenze_funzionali) ? "Preferenze di lavoro di Luigi: " + S.profilo.preferenze_funzionali + "\n" : ""}${(S.profilo && S.profilo.regole_appunti) ? "Regole di Luigi per leggere gli appunti e ragionare (in caso di dubbio prevalgono su quanto segue):\n" + String(S.profilo.regole_appunti).slice(0, 7000) + "\n" : ""}Regole: non inventare nomi, scadenze, prove, cifre, intenzioni o responsabilità; se una cosa manca, dillo. Distingui fatti dichiarati, ipotesi e consigli. Non assecondare automaticamente: se vedi una contraddizione o una lettura alternativa, dilla. Distingui azioni di Luigi, attese da altri e lavoro che segue un'altra persona; non trasformare informazioni o lavoro altrui in compiti di Luigi. Nessun fatturato-obiettivo o probabilità di vendita. Un conflitto tra priorità è una decisione da chiarire con chi la decide. Italiano, frasi brevi.
+${(S.profilo && S.profilo.mandato) ? "Mandato dichiarato da Luigi: " + S.profilo.mandato + "\n" : ""}${(S.profilo && S.profilo.preferenze_funzionali) ? "Preferenze di lavoro di Luigi: " + S.profilo.preferenze_funzionali + "\n" : ""}${(S.profilo && S.profilo.regole_appunti) ? "Regole di Luigi per leggere gli appunti e ragionare (in caso di dubbio prevalgono su quanto segue):\n" + String(S.profilo.regole_appunti).slice(0, 7000) + "\n" : ""}${(S.profilo && S.profilo.regole_coach) ? "Requisiti del Coach autorizzati da Luigi (guida del 21/10/2026, sezione 7; prevalgono in caso di dubbio):\n" + String(S.profilo.regole_coach).slice(0, 14000) + "\n" : ""}Regole: non inventare nomi, scadenze, prove, cifre, intenzioni o responsabilità; se una cosa manca, dillo. Distingui fatti dichiarati, ipotesi e consigli. Non assecondare automaticamente: se vedi una contraddizione o una lettura alternativa, dilla. Distingui azioni di Luigi, attese da altri e lavoro che segue un'altra persona; non trasformare informazioni o lavoro altrui in compiti di Luigi. Nessun fatturato-obiettivo o probabilità di vendita. Un conflitto tra priorità è una decisione da chiarire con chi la decide. Italiano, frasi brevi.
 ${DOC_GUARD}`;
 }
 async function salvaNota(analizza) {
@@ -509,7 +509,7 @@ function renderCoachScheda() {
       <dt>Quando</dt><dd>${pa ? (pa.data ? fmtDate(pa.data) : pa.data_da_chiarire ? "da chiarire" : "senza data") : a.posso_aspettare ? "Puoi aspettare: " + esc(a.posso_aspettare) : "—"}</dd>
       ${a.ultimo_coach && a.ultimo_coach.da_aggiornare ? `<dt>Coach</dt><dd><span class="chip err">Analisi da aggiornare</span> <span class="tiny">dopo una correzione</span></dd>` : ""}
     </dl>
-    <div class="row"><button class="primary" id="btn-coach" ${S.sample ? "" : "disabled"}>Chiedi al Coach</button><button id="btn-parlato">Ho parlato</button><button class="quiet" id="btn-arg-mod">Modifica scheda</button>${a.stato === "archiviato" ? '<button class="quiet" id="btn-riapri">Riapri</button>' : '<button class="quiet" id="btn-archivia">Archivia</button>'}</div>
+    <div class="row"><button class="primary" id="btn-coach" ${S.sample ? "" : "disabled"}>Chiedi al Coach</button><button id="btn-parlato">Ho parlato</button><button id="btn-visita" ${S.sample ? "" : "disabled"}>Prepara la visita</button><button id="btn-verifica" ${S.sample ? "" : "disabled"}>Verifica online</button><button class="quiet" id="btn-cerca" ${S.sample ? "" : "disabled"}>Cerca una fonte sul web</button><button class="quiet" id="btn-arg-mod">Modifica scheda</button>${a.stato === "archiviato" ? '<button class="quiet" id="btn-riapri">Riapri</button>' : '<button class="quiet" id="btn-archivia">Archivia</button>'}</div>
     <div id="coach-out"></div>
     <details><summary>Approfondisci: situazione, impegni, note, versioni</summary><div class="inner">
       <div><b>Situazione:</b> ${esc(a.situazione || "—")}</div>
@@ -517,11 +517,17 @@ function renderCoachScheda() {
       ${aperti.length ? `<div class="eyebrow">Impegni aperti</div><div class="list">${aperti.map(impegnoHTML).join("")}</div>` : `<p class="muted">Nessun impegno aperto.</p>`}
       ${fatti.length ? `<div class="eyebrow">Esiti recenti</div>${fatti.map(impegnoHTML).join("")}` : ""}
       <div class="eyebrow">Note collegate (${note.length})</div>${note.length ? note.slice(0, 10).map(notaHTML).join("") : '<p class="muted">Nessuna nota collegata.</p>'}
+      ${(a.ricerche || []).length ? `<div class="eyebrow">Verifiche online salvate</div><div class="list">${a.ricerche.slice().reverse().map(r => `<div class="item"><div class="stripe ${r.stato_analisi === "da_aggiornare" ? "attesa" : "mia"}"></div><div class="grow"><div class="t">${esc(r.domanda)}</div><div class="meta">${fmtTs(r.quando)} · ricerca ${esc(r.stato)}${r.stato_analisi === "da_aggiornare" ? ' · <span class="chip err">Da aggiornare</span>' : ""} · ${(r.evidenze || []).length} fonti</div><div class="row"><button class="small quiet" data-ric-apri="${r.id}">Apri</button><button class="small quiet" data-ric-agg="${r.id}">Aggiorna ricerca</button></div></div></div>`).join("")}</div>` : ""}
       ${(a.versioni || []).length ? `<div class="eyebrow">Versioni della situazione</div><div class="versions">${a.versioni.slice().reverse().map(v => `<div>${fmtTs(v.quando)} · ${esc(v.cosa)}</div>`).join("")}</div>` : ""}
     </div></details></div>`;
   root.innerHTML = h;
   if (S.coachOut) renderCoachOut(S.coachOut);
   $("#btn-coach").addEventListener("click", () => chiediCoach(a));
+  $("#btn-visita").addEventListener("click", () => apriFormVisita(a));
+  $("#btn-cerca").addEventListener("click", () => apriFormCerca(a));
+  $("#btn-verifica").addEventListener("click", () => apriFormVerifica(a));
+  $$("[data-ric-apri]", root).forEach(b => b.addEventListener("click", () => { const r = (S.argomenti.get(a.id).ricerche || []).find(x => x.id === b.dataset.ricApri); if (r) renderVerifica(a, r, false); }));
+  $$("[data-ric-agg]", root).forEach(b => b.addEventListener("click", () => { const r = (S.argomenti.get(a.id).ricerche || []).find(x => x.id === b.dataset.ricAgg); if (r) eseguiVerifica(a, r.domanda, true); }));
   $("#btn-parlato").addEventListener("click", () => { showView("piano"); const ta = $("#nota"); ta.value = "Ho parlato con … su «" + a.titolo + "»: "; ta.focus(); });
   $("#btn-arg-mod").addEventListener("click", () => apriFormArgomento(a));
   const arch = $("#btn-archivia"); if (arch) arch.addEventListener("click", async () => { const na = clone(a); na.stato = "archiviato"; na.archiviato_il = nowIso(); na.versioni = (na.versioni || []).concat([{ quando: nowIso(), cosa: "Archiviato" }]); await save("argomenti", a.id, na, { label: "Archivia" }); toast("Archiviato: la storia resta, nessuna nuova attività", true); });
@@ -545,12 +551,13 @@ function lezioniContesto() {
   const lez = Array.from(S.lezioni.values());
   if (!lez.length) return "Lezioni personali: nessuna caricata (nessuna fonte di studio disponibile: dichiaralo).";
   let out = "Lezioni personali di Luigi (usa prima queste; cita titolo e pagina/fonte quando le usi; non attribuire loro cose che non dicono):\n<materiale>";
-  for (const l of lez) { out += `\n## ${l.titolo}${l.fonte ? " (" + l.fonte + ")" : ""}\n`; const pr = (l.principi || []).map(p => `- ${p.testo}${p.riferimento ? " [" + p.riferimento + "]" : ""}${p.correzione ? " — CORREZIONE di Luigi (prevale): " + p.correzione : ""}`).join("\n"); out += pr || (l.testo || "").slice(0, 1200); if ((l.correzioni || []).length) out += "\nCorrezioni generali di Luigi (prevalgono): " + l.correzioni.map(c => c.testo).join(" | "); }
-  return out.slice(0, 40000) + "\n</materiale>";
+  for (const l of lez) { out += `\n## ${l.titolo}${l.fonte ? " (" + l.fonte + ")" : ""}\n`; const pr = (l.principi || []).map(p => `- ${String(p.testo).slice(0, 500)}${p.riferimento ? " [" + p.riferimento + "]" : ""}${p.correzione ? " — CORREZIONE di Luigi (prevale): " + p.correzione : ""}`).join("\n"); out += pr || (l.testo || "").slice(0, 1200); if ((l.correzioni || []).length) out += "\nCorrezioni generali di Luigi (prevalgono): " + l.correzioni.map(c => c.testo).join(" | "); }
+  return out.slice(0, 110000) + "\n</materiale>";
 }
 async function chiediCoach(a) {
   const out = $("#coach-out"); out.innerHTML = `<div class="banner info"><span><span class="spin"></span> Il Coach sta ragionando…</span><div class="row"><button class="small quiet" id="coach-stop">Ferma</button></div></div>`;
   const ctl = new AbortController(); $("#coach-stop").addEventListener("click", () => ctl.abort());
+  const gen = S.gen || 0;
   const imps = impegniDi(a.id); const note = Array.from(S.note.values()).filter(n => (n.argomento_ids || []).includes(a.id)).sort((x, y) => (y.data_nota + y.creato).localeCompare(x.data_nota + x.creato)).slice(0, 8);
   const prompt = `${contestoBase()}
 
@@ -588,9 +595,11 @@ ${(S.profilo && S.profilo.formato_coach) ? "Formato richiesto da Luigi (i campi 
  "istruzioni_sospette":false}`;
   try {
     const r = await S.sample.json(prompt, { cache: false, signal: ctl.signal });
+    if ((S.gen || 0) !== gen) { const o = $("#coach-out"); if (o) o.innerHTML = `<div class="banner">Risposta superata: nel frattempo hai fatto una correzione. Premi di nuovo «Chiedi al Coach» per una risposta aggiornata.</div>`; return; }
     S.coachOut = { r, quando: nowIso(), arg: a.id }; renderCoachOut(S.coachOut);
     const na = clone(S.argomenti.get(a.id) || a); na.ultimo_coach = { quando: nowIso(), in_breve: r.in_breve || "", prossima_mossa: r.prossima_mossa || "", da_aggiornare: false }; if (r.posso_aspettare && r.posso_aspettare.si && r.posso_aspettare.fino_a) na.posso_aspettare = r.posso_aspettare.fino_a; await save("argomenti", a.id, na, { silent: true, noUndo: true });
   } catch (e) {
+    if (e && e.code === "invalid_json" && e.text) { out.innerHTML = `<div class="coach-out card" style="border-color:var(--accent)"><div class="tiny">Coach · risposta non strutturata (mostrata com'è)</div><div style="white-space:pre-wrap">${esc(String(e.text).slice(0, 6000))}</div><div class="row"><button class="small" id="copy-raw">Copia</button></div></div>`; $("#copy-raw").addEventListener("click", () => copyText(String(e.text))); return; }
     out.innerHTML = e && e.code === "cancelled" ? "" : `<div class="banner err">Il Coach non ha risposto (${esc(e && e.code || "errore")}). I dati sono salvati; riprova più tardi.</div>`;
   }
 }
@@ -599,16 +608,18 @@ function renderCoachOut(c) {
   const lst = (arr) => Array.isArray(arr) && arr.length ? `<ul class="plain">${arr.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
   const txt = `In breve\n${r.in_breve || ""}\n\nCosa cambia\n${r.cosa_cambia || ""}\n\nProssima mossa\n${r.prossima_mossa || ""}\nChi e quando: ${r.chi_e_quando || r.quando || "non noto"}${r.posso_aspettare && r.posso_aspettare.si ? "\nPuoi aspettare" + (r.posso_aspettare.fino_a ? " fino a: " + r.posso_aspettare.fino_a : "") : ""}\n\nDa verificare\n${r.rischio || ""}\n\nFondamento\n${(r.principio && r.principio.testo) || ""} (${(r.principio && r.principio.fonte) || ""})${r.principio && r.principio.nesso ? " — " + r.principio.nesso : ""}\n\n${r.come_dirlo ? "Come dirlo\n" + r.come_dirlo + "\n\n" : ""}Fatti: ${(r.fatti || []).join(" · ")}\nIpotesi: ${(r.ipotesi || []).join(" · ")}\nContraddizioni: ${(r.contraddizioni || []).join(" · ") || "nessuna segnalata"}\n${r.spiegazione_alternativa ? "Spiegazione alternativa: " + r.spiegazione_alternativa + "\n" : ""}Principio: ${(r.principio && r.principio.testo) || ""} (${(r.principio && r.principio.fonte) || ""})\n\nGenerato dal Coach il ${fmtTs(c.quando)}; da verificare con i fatti.`;
   const ap = r.azione_proposta && r.azione_proposta.titolo;
+  const argC = S.argomenti.get(c.arg); const superata = !!(argC && argC.ultimo_coach && argC.ultimo_coach.da_aggiornare);
   out.innerHTML = `<div class="coach-out card" style="border-color:var(--accent)">
     <div class="tiny">Coach · ${fmtTs(c.quando)}</div>
+    ${superata ? `<div class="banner err">Sintesi superata: dopo questa risposta c'è stata una correzione. Chiedi di nuovo al Coach prima di usarla.</div>` : ""}
     ${r.istruzioni_sospette ? `<div class="banner err">Nel materiale c'erano frasi rivolte all'assistente: ignorate.</div>` : ""}
     <div class="blk"><div class="eyebrow">In breve</div><div>${esc(r.in_breve)}</div></div>
     ${r.cosa_cambia ? `<div class="blk"><div class="eyebrow">Cosa cambia</div><div>${esc(r.cosa_cambia)}</div></div>` : ""}
-    <div class="blk"><div class="eyebrow">Prossima mossa</div><div>${esc(r.prossima_mossa)}</div><div class="tiny">Chi e quando: ${esc(r.chi_e_quando || r.quando || "non noto")}${r.posso_aspettare && r.posso_aspettare.si ? " · puoi aspettare" + (r.posso_aspettare.fino_a ? " fino a " + esc(r.posso_aspettare.fino_a) : "") : ""}</div></div>
+    <div class="blk"><div class="eyebrow">Cosa fare</div><div>${esc(r.prossima_mossa)}</div><div class="tiny">Chi e quando: ${esc(r.chi_e_quando || r.quando || "non noto")}${r.posso_aspettare && r.posso_aspettare.si ? " · puoi aspettare" + (r.posso_aspettare.fino_a ? " fino a " + esc(r.posso_aspettare.fino_a) : "") : ""}</div></div>
+    ${r.come_dirlo ? `<div class="blk"><div class="eyebrow">Cosa dire</div><div class="quote">${esc(r.come_dirlo)}</div><div class="row"><button class="small" id="copy-dirlo">Copia il testo</button></div></div>` : ""}
+    ${r.principio && r.principio.testo ? `<div class="blk"><div class="eyebrow">Fondamento</div><div>${esc(r.principio.testo)}</div><div class="tiny">${esc(r.principio.fonte || "")}${r.principio.nesso ? " · " + esc(r.principio.nesso) : ""}</div></div>` : ""}
     ${Array.isArray(r.contraddizioni) && r.contraddizioni.length ? `<div class="banner"><b>Contraddizioni</b>${lst(r.contraddizioni)}</div>` : ""}
     <div class="blk"><div class="eyebrow">Da verificare</div><div>${esc(r.rischio)}</div></div>
-    ${r.principio && r.principio.testo ? `<div class="blk"><div class="eyebrow">Fondamento</div><div>${esc(r.principio.testo)}</div><div class="tiny">${esc(r.principio.fonte || "")}${r.principio.nesso ? " · " + esc(r.principio.nesso) : ""}</div></div>` : ""}
-    ${r.come_dirlo ? `<div class="blk"><div class="eyebrow">Come dirlo</div><div class="quote">${esc(r.come_dirlo)}</div><div class="row"><button class="small" id="copy-dirlo">Copia il testo</button></div></div>` : ""}
     <div class="row"><button class="small" id="copy-out">Copia output</button>${ap ? `<button class="small primary" id="add-ap">Aggiungi come azione mia: ${esc(ap)}</button>` : ""}</div>
     <details><summary>Approfondisci: fatti, ipotesi, alternative, principio</summary><div class="inner">
       <div class="blk"><div class="eyebrow">Fatti</div>${lst(r.fatti) || '<div class="muted">Nessun fatto distinto.</div>'}</div>
@@ -619,9 +630,218 @@ function renderCoachOut(c) {
       ${r.segnale ? `<div class="blk"><div class="eyebrow">Segnale da osservare</div><div>${esc(r.segnale)}</div></div>` : ""}
       ${r.precedente ? `<div class="blk"><div class="eyebrow">Precedente confrontabile</div><div>${esc(r.precedente)}</div></div>` : ""}
     </div></details></div>`;
-  $("#copy-out").addEventListener("click", () => copyText(txt));
+  $("#copy-out").addEventListener("click", () => copyText((superata ? "ATTENZIONE: sintesi superata da una correzione successiva, da rigenerare.\n\n" : "") + txt));
   const cd = $("#copy-dirlo"); if (cd) cd.addEventListener("click", () => copyText(r.come_dirlo));
   const ad = $("#add-ap"); if (ad) ad.addEventListener("click", async () => { const ni = { id: uid(), titolo: r.azione_proposta.titolo, tipo: "mia", da_chi: "", data: r.azione_proposta.data || "", argomento_id: S.coachArg, stato: "aperto", creato: nowIso(), origine: "coach", versioni: [] }; await save("impegni", ni.id, ni, { label: "Azione dal Coach" }); toast("Azione aggiunta al Piano", true); });
+}
+
+// ---------- PREPARA LA VISITA (prompt P01 della guida) ----------
+function apriFormVisita(a) {
+  const out = $("#coach-out");
+  out.innerHTML = `<div class="card inline-edit" style="border-color:var(--accent)"><div class="eyebrow">Prepara la visita · ${esc(a.titolo)}</div>
+    <label for="vis-app">Appunti per la visita (anche grezzi, dettati, incompleti)</label><textarea id="vis-app" placeholder="Cosa so, cosa è successo, cosa mi aspetto…"></textarea>
+    <label for="vis-ris">Risultato che voglio (se lo so)</label><input type="text" id="vis-ris" placeholder="es. capire quale articolo deve produrre">
+    <div class="row"><button class="primary" id="vis-ok">Prepara</button><button class="quiet" id="vis-an">Annulla</button></div></div>`;
+  $("#vis-an").addEventListener("click", () => { out.innerHTML = ""; });
+  $("#vis-ok").addEventListener("click", () => preparaVisita(a, $("#vis-app").value.trim(), $("#vis-ris").value.trim()));
+}
+async function preparaVisita(a, appunti, risultato) {
+  // 7.4: prima si salva la nota, poi si ragiona (la pagina si ridisegna: il riquadro va ripreso dopo)
+  let nota = null;
+  if (appunti) { nota = { id: uid(), testo_originale: "Appunti per la visita: " + appunti, data_nota: today(), tipo: "nota", argomento_ids: [a.id], creato: nowIso(), analisi_stato: "nessuna", correzioni: [], versioni_testo: [] }; await save("note", nota.id, nota, { silent: true, noUndo: true }); }
+  const out = $("#coach-out"); if (!out) return;
+  out.innerHTML = `<div class="banner info"><span><span class="spin"></span> Preparo la visita…</span><div class="row"><button class="small quiet" id="vis-stop">Ferma</button></div></div>`;
+  const ctl = new AbortController(); $("#vis-stop").addEventListener("click", () => ctl.abort());
+  const gen = S.gen || 0;
+  const imps = impegniDi(a.id); const note = Array.from(S.note.values()).filter(n => (n.argomento_ids || []).includes(a.id) && (!nota || n.id !== nota.id)).sort((x, y) => (y.data_nota + y.creato).localeCompare(x.data_nota + x.creato)).slice(0, 8);
+  const prompt = `${contestoBase()}
+
+Oggi è ${today()}.
+PREPARAZIONE DI UNA VISITA. ARGOMENTO: ${a.titolo} (${AMBITI[a.ambito] || ""})
+Situazione nota: ${a.situazione || "—"}
+Ultima novità: ${(a.ultima_novita && a.ultima_novita.testo) || "—"} (${(a.ultima_novita && a.ultima_novita.data) || ""})
+Impegni (aperti e chiusi): ${JSON.stringify(imps.map(i => ({ cosa: i.titolo, tipo: i.tipo, da_chi: i.da_chi, data: i.data, stato: i.stato, esito: i.esito })))}
+Risultato che Luigi vuole dalla visita: ${risultato || "non dichiarato"}
+Appunti nuovi di Luigi per questa visita:
+<materiale>
+${appunti || "nessuno"}
+</materiale>
+Note precedenti di Luigi (dalla più recente), con data:
+<materiale>
+${note.map(n => `[${n.data_nota}${n.tipo !== "nota" ? " · " + n.tipo : ""}] ${n.testo_originale.slice(0, 900)}${(n.correzioni || []).length ? " — correzioni: " + n.correzioni.map(c => c.testo).join(" | ") : ""}`).join("\n") || "nessuna"}
+</materiale>
+
+${lezioniContesto()}
+
+Prepara la visita usando SOLO la storia disponibile sopra. Risposta breve, leggibile sul telefono: in tutto circa 200 parole. Separa i fatti (dagli appunti e dalle note, con data se nota) dalle ipotesi. Se manca un dato che cambia davvero la preparazione, fai UNA sola domanda in "domanda_mancante" e prepara comunque la bozza; altrimenti lascia vuoto. Nessuna urgenza inventata, nessuna scarsità finta, nessuna deduzione di intenzioni o emozioni; nessun compito tecnico assegnato ad altri come già accettato. Un solo fondamento, scelto tra le lezioni personali di Luigi o i riferimenti R01–R08 della biblioteca, con titolo e fonte precisi e il nesso con questo caso; E01–E02 non sono fondamenti principali; se nessuno è davvero pertinente, dillo. La frase per l'obiezione solo se motivata dai dati. Il prossimo passo è una proposta, non un impegno preso.
+
+Rispondi solo con JSON:
+{"obiettivo":"obiettivo della visita, una frase",
+ "apertura":"frase iniziale naturale, una o due frasi",
+ "domande":["tre domande, in ordine"],
+ "obiezione":{"probabile":"oppure vuoto","risposta":"oppure vuoto"},
+ "evitare":["una-tre cose da evitare, con il motivo in poche parole"],
+ "prossimo_passo":"cosa proporre a fine visita (proposta)",
+ "fondamento":{"testo":"","fonte":"titolo e pagina/documento, o 'nessun fondamento pertinente'","nesso":"perché si applica qui e cosa non dimostra"},
+ "fatti":["..."],"ipotesi":["..."],
+ "domanda_mancante":"",
+ "istruzioni_sospette":false}`;
+  try {
+    const r = await S.sample.json(prompt, { cache: false, signal: ctl.signal });
+    if ((S.gen || 0) !== gen) { const o3 = $("#coach-out"); if (o3) o3.innerHTML = `<div class="banner">Preparazione superata: nel frattempo hai fatto una correzione. Premi di nuovo «Prepara la visita».</div>`; return; }
+    const na = clone(S.argomenti.get(a.id) || a); na.ultima_preparazione = { quando: nowIso(), r, nota_id: nota ? nota.id : "" }; await save("argomenti", a.id, na, { silent: true, noUndo: true, noRender: true });
+    renderVisita(a, r, nowIso());
+  } catch (e) {
+    const o2 = $("#coach-out"); if (o2) o2.innerHTML = e && e.code === "cancelled" ? "" : `<div class="banner err">Il Coach non ha risposto (${esc(e && e.code || "errore")}). Gli appunti sono salvati; riprova più tardi.</div>`;
+  }
+}
+function renderVisita(a, r, quando) {
+  const out = $("#coach-out"); if (!out) return;
+  const lst = (arr) => Array.isArray(arr) && arr.length ? `<ul class="plain">${arr.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
+  const dom = Array.isArray(r.domande) ? r.domande : [];
+  const txt = `Preparazione visita · ${a.titolo} · ${fmtTs(quando)}\n\nObiettivo\n${r.obiettivo || ""}\n\nApertura\n${r.apertura || ""}\n\nDomande\n${dom.map((d, i) => (i + 1) + ". " + d).join("\n")}\n${r.obiezione && r.obiezione.probabile ? "\nSe dice: " + r.obiezione.probabile + "\nRispondere: " + (r.obiezione.risposta || "") + "\n" : ""}\nDa evitare\n${(r.evitare || []).join("\n")}\n\nProssimo passo (proposta)\n${r.prossimo_passo || ""}\n\nFondamento\n${(r.fondamento && r.fondamento.testo) || ""} (${(r.fondamento && r.fondamento.fonte) || ""})${r.fondamento && r.fondamento.nesso ? " — " + r.fondamento.nesso : ""}\n\nFatti: ${(r.fatti || []).join(" · ")}\nIpotesi: ${(r.ipotesi || []).join(" · ")}${r.domanda_mancante ? "\nDa chiarire prima: " + r.domanda_mancante : ""}\n\nGenerato dal Coach; proposte da verificare con i fatti.`;
+  out.innerHTML = `<div class="coach-out card" style="border-color:var(--accent)">
+    <div class="tiny">Preparazione visita · ${fmtTs(quando)}</div>
+    ${r.istruzioni_sospette ? `<div class="banner err">Nel materiale c'erano frasi rivolte all'assistente: ignorate.</div>` : ""}
+    ${r.domanda_mancante ? `<div class="banner info"><b>Da chiarire prima:</b> ${esc(r.domanda_mancante)}</div>` : ""}
+    <div class="blk"><div class="eyebrow">Obiettivo</div><div>${esc(r.obiettivo)}</div></div>
+    <div class="blk"><div class="eyebrow">Apertura</div><div class="quote">${esc(r.apertura)}</div></div>
+    <div class="blk"><div class="eyebrow">Tre domande</div><ol style="margin:0;padding-left:20px">${dom.map(d => `<li>${esc(d)}</li>`).join("")}</ol></div>
+    ${r.obiezione && r.obiezione.probabile ? `<div class="blk"><div class="eyebrow">Se dice</div><div>${esc(r.obiezione.probabile)}</div><div class="quote">${esc(r.obiezione.risposta || "")}</div></div>` : ""}
+    <div class="blk"><div class="eyebrow">Da evitare</div>${lst(r.evitare) || '<div class="muted">—</div>'}</div>
+    <div class="blk"><div class="eyebrow">Prossimo passo da proporre</div><div>${esc(r.prossimo_passo)}</div></div>
+    ${r.fondamento && r.fondamento.testo ? `<div class="blk"><div class="eyebrow">Fondamento</div><div>${esc(r.fondamento.testo)}</div><div class="tiny">${esc(r.fondamento.fonte || "")}${r.fondamento.nesso ? " · " + esc(r.fondamento.nesso) : ""}</div></div>` : ""}
+    <div class="row"><button class="small" id="copy-vis">Copia la preparazione</button></div>
+    <details><summary>Fatti e ipotesi</summary><div class="inner">
+      <div class="blk"><div class="eyebrow">Fatti</div>${lst(r.fatti) || '<div class="muted">Nessun fatto distinto.</div>'}</div>
+      <div class="blk"><div class="eyebrow">Ipotesi</div>${lst(r.ipotesi) || '<div class="muted">Nessuna.</div>'}</div>
+    </div></details></div>`;
+  $("#copy-vis").addEventListener("click", () => copyText(txt));
+}
+
+// ---------- VERIFICA ONLINE (metodo A–G, eseguito dal server) ----------
+function apriFormVerifica(a) {
+  const out = $("#coach-out");
+  out.innerHTML = `<div class="card inline-edit" style="border-color:var(--accent)"><div class="eyebrow">Verifica online · ${esc(a.titolo)}</div>
+    <p class="muted">Il Coach mette a fuoco la decisione con i tuoi appunti e le lezioni, cerca online solo i fatti esterni che contano (con termini pubblici, senza nomi privati), legge le pagine decisive e ti dà una risposta breve con le fonti sotto «Approfondisci».</p>
+    <label for="ver-q">Domanda o decisione</label><input type="text" id="ver-q" value="Cosa conviene fare adesso su «${esc(a.titolo)}»?">
+    <div class="row"><button class="primary" id="ver-ok">Verifica</button><button class="quiet" id="ver-an">Annulla</button></div></div>`;
+  $("#ver-an").addEventListener("click", () => { out.innerHTML = ""; });
+  $("#ver-ok").addEventListener("click", () => eseguiVerifica(a, $("#ver-q").value.trim(), true));
+}
+async function eseguiVerifica(a, domanda, forza) {
+  const out = $("#coach-out"); const avvio = Date.now(); S.verificaInCorso = { arg: a.id, avvio };
+  out.innerHTML = `<div class="banner info"><span><span class="spin"></span> Ricerca in corso… (messa a fuoco, ricerca e lettura, confronto: può volerci più di un minuto)</span></div>`;
+  let r;
+  try { const resp = await fetch("/api/verifica", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ argomento_id: a.id, domanda, forza_ricerca: !!forza }) }); r = await resp.json(); if (!resp.ok || r.error) throw r; }
+  catch (e) { const o = $("#coach-out"); if (o && S.verificaInCorso && S.verificaInCorso.avvio === avvio) o.innerHTML = `<div class="banner err">Verifica non disponibile (${esc(e && e.error || "errore")}). ${e && e.error === "not_configured" ? "Il server non ha la chiave Anthropic: posso rispondere solo sui materiali interni con «Chiedi al Coach»." : "I dati sono salvati; riprova più tardi."}</div>`; return; }
+  // esiti fuori ordine: una risposta più vecchia non sovrascrive una più recente
+  if (!S.verificaInCorso || S.verificaInCorso.arg !== a.id || S.verificaInCorso.avvio !== avvio) return;
+  const cur = S.argomenti.get(a.id); const ultima = cur && (cur.ricerche || []).slice(-1)[0]; if (ultima && ultima.quando > r.quando) return;
+  renderVerifica(a, r, true);
+}
+function renderVerifica(a, r, appena) {
+  const out = $("#coach-out"); if (!out) return; const f = r.risposta || {}; const ap = f.approfondisci || {};
+  const lst = (arr) => Array.isArray(arr) && arr.length ? `<ul class="plain">${arr.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
+  const ev = Array.isArray(r.evidenze) ? r.evidenze : []; const evDi = (k) => { const m = /E(\d+)/.exec(String(k)); return m ? ev[Number(m[1]) - 1] : null; };
+  const onlineRef = (Array.isArray(f.fondamento && f.fondamento.online) ? f.fondamento.online : []).map(evDi).filter(Boolean);
+  const interni = Array.isArray(f.fondamento && f.fondamento.interni) ? f.fondamento.interni : [];
+  const superata = r.stato_analisi === "da_aggiornare";
+  const statoTxt = r.stato === "non necessaria" ? "nessuna ricerca online necessaria (memoria interna)" : r.stato === "non disponibile" ? "ricerca online NON disponibile" : `ricerca online ${r.stato} (${r.ricerche || 0} ricerche, ${r.letture || 0} pagine lette)`;
+  const fontiTxt = ev.map((e, i) => `[E${i + 1}] ${e.titolo} — ${e.autore_ente} · pubblicata: ${e.data_pubblicazione} · consultata: ${fmtTs(e.consultata)} · ${e.letta ? "letta" : "non letta (solo risultato)"} · ${e.url}\n   sostiene: ${e.affermazione}\n   limite: ${e.limite}`).join("\n");
+  const txt = `Verifica online · ${a.titolo} · ${fmtTs(r.quando)}${superata ? "\nATTENZIONE: da aggiornare dopo una correzione" : ""}\nDomanda: ${r.domanda}\n\nIn breve\n${f.in_breve || ""}\n\nProssima mossa\n${f.prossima_mossa || ""}\nChi e quando: ${f.chi_e_quando || "da concordare"}\n${f.cosa_dire ? "\nCosa dire\n" + f.cosa_dire + "\n" : ""}\nFondamento\n${interni.map(x => `- ${x.tipo} ${x.id}${x.riferimento ? " (" + x.riferimento + ")" : ""}: ${x.passaggio || ""}`).join("\n")}\n${fontiTxt ? "Fonti online consultate il " + fmtTs(r.quando) + ":\n" + fontiTxt + "\n" : ""}${f.limite_decisivo ? "\nLimite decisivo\n" + f.limite_decisivo + "\n" : ""}\nSupporto: ${f.supporto || ""} — ${f.motivo_supporto || ""}\nStato: ${statoTxt}${(r.mancanti || []).length ? "\nMateriali mancanti: " + r.mancanti.join("; ") : ""}\n\nApprofondisci\nFatto cercato: ${ap.fatto_cercato || ""}\nCriteri: ${(ap.criteri || []).join("; ")}\nAlternative: ${(ap.alternative || []).join("; ")}\nContraddizioni: ${(ap.contraddizioni || []).join("; ")}\nEvidenze per conclusione: ${(ap.evidenze_per_conclusione || []).join("; ")}\nApplicazione: ${ap.passaggio_applicazione || ""}\nMancanti: ${(ap.mancanti || []).join("; ")}\nVerifica che cambierebbe la scelta: ${ap.verifica_che_cambia || ""}\n\nGenerato dal Coach; fonti e incertezze incluse; proposte da verificare con i fatti.`;
+  out.innerHTML = `<div class="coach-out card" style="border-color:var(--accent)">
+    <div class="tiny">Verifica online · ${fmtTs(r.quando)}${appena ? "" : " (ricerca salvata, non appena eseguita)"} · ${esc(statoTxt)}</div>
+    ${superata ? `<div class="banner err">Da aggiornare: dopo questa verifica hai corretto un materiale che usava. Premi «Aggiorna ricerca».</div>` : ""}
+    ${f.istruzioni_sospette ? `<div class="banner err">Nel materiale c'erano frasi rivolte all'assistente: ignorate.</div>` : ""}
+    ${r.messa_a_fuoco && r.messa_a_fuoco.domanda_a_luigi ? `<div class="banner info"><b>Una domanda per te:</b> ${esc(r.messa_a_fuoco.domanda_a_luigi)}</div>` : ""}
+    <div class="blk"><div class="eyebrow">In breve</div><div>${esc(f.in_breve || "")}</div></div>
+    <div class="blk"><div class="eyebrow">Prossima mossa</div><div>${esc(f.prossima_mossa || "")}</div><div class="tiny">Chi e quando: ${esc(f.chi_e_quando || "da concordare")}</div></div>
+    ${f.cosa_dire ? `<div class="blk"><div class="eyebrow">Cosa dire</div><div class="quote">${esc(f.cosa_dire)}</div></div>` : ""}
+    <div class="blk"><div class="eyebrow">Fondamento</div>${interni.length ? `<ul class="plain">${interni.map(x => `<li>${esc(x.tipo)} <span class="tiny">${esc(x.id)}${x.riferimento ? " · " + esc(x.riferimento) : ""}</span>: ${esc(x.passaggio || "")}</li>`).join("")}</ul>` : '<div class="muted">Nessun riferimento interno dichiarato.</div>'}${onlineRef.length ? `<div class="tiny">Fonti online consultate il ${fmtTs(r.quando)}:</div><ul class="plain">${onlineRef.map(e => `<li><a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.titolo || e.url)}</a> <span class="tiny">${esc(e.autore_ente)} · pubblicata: ${esc(e.data_pubblicazione)} · ${e.letta ? "letta" : "non letta"}</span></li>`).join("")}</ul>` : ""}</div>
+    ${f.limite_decisivo ? `<div class="blk"><div class="eyebrow">Limite decisivo</div><div>${esc(f.limite_decisivo)}</div></div>` : ""}
+    <div class="row"><span class="chip ${f.supporto === "Ben supportato" ? "ok" : f.supporto === "Parziale" ? "attesa" : "err"}">${esc(f.supporto || "Da verificare")}</span><span class="tiny">${esc(f.motivo_supporto || "")}</span></div>
+    ${(r.mancanti || []).length ? `<div class="banner"><b>Materiali mancanti o non confermati</b>${lst(r.mancanti)}</div>` : ""}
+    <div class="row"><button class="small" id="copy-ver">Copia output</button><button class="small quiet" id="ver-agg">Aggiorna ricerca</button>${f.azione_proposta && f.azione_proposta.titolo ? `<button class="small primary" id="add-ver">Aggiungi come azione mia: ${esc(f.azione_proposta.titolo)}</button>` : ""}</div>
+    <details><summary>Approfondisci: fonti, criteri, alternative, limiti</summary><div class="inner">
+      <div class="blk"><div class="eyebrow">Fatto cercato</div><div>${esc(ap.fatto_cercato || (r.fatti_esterni || []).map(x => x.fatto).join(" · ") || "—")}</div>${(r.query_filtrate || []).length ? `<div class="tiny">Nomi riservati tolti dalle ricerche prima dell'invio.</div>` : ""}</div>
+      <div class="blk"><div class="eyebrow">Criteri</div>${lst(ap.criteri) || '<div class="muted">—</div>'}</div>
+      <div class="blk"><div class="eyebrow">Fonti online (${ev.length})</div>${ev.length ? `<div class="list">${ev.map((e, i) => `<div class="item"><div class="stripe ${e.letta ? "mia" : "attesa"}"></div><div class="grow"><div class="t">[E${i + 1}] ${esc(e.titolo || e.url)}</div><div class="meta">${esc(e.autore_ente)} · <span class="chip">${esc(e.tipo)}</span> · pubblicata: ${esc(e.data_pubblicazione)} · consultata: ${fmtTs(e.consultata)} · ${e.letta ? "letta integralmente" : "solo risultato di ricerca"}</div><div>${esc(e.affermazione)}</div><div class="meta">Limite: ${esc(e.limite)}</div>${e.indipendente ? `<div class="meta">Indipendente da: ${esc(e.indipendente)}</div>` : ""}<div class="meta"><a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.url)}</a></div></div></div>`).join("")}</div>` : `<div class="muted">${esc(r.nota_ricerca || "Nessuna fonte online usata.")}</div>`}${r.nota_ricerca && ev.length ? `<div class="tiny">${esc(r.nota_ricerca)}</div>` : ""}${(r.contrasti || []).length ? `<div class="banner"><b>Contrasti tra fonti</b>${lst(r.contrasti)}</div>` : ""}</div>
+      ${lst(ap.alternative) ? `<div class="blk"><div class="eyebrow">Alternative</div>${lst(ap.alternative)}</div>` : ""}
+      ${lst(ap.contraddizioni) ? `<div class="banner"><b>Contraddizioni</b>${lst(ap.contraddizioni)}</div>` : ""}
+      <div class="blk"><div class="eyebrow">Evidenze per ciascuna conclusione</div>${lst(ap.evidenze_per_conclusione) || '<div class="muted">—</div>'}</div>
+      <div class="blk"><div class="eyebrow">Dall'evidenza al caso</div><div>${esc(ap.passaggio_applicazione || "—")}</div></div>
+      <div class="blk"><div class="eyebrow">Mancanti e verifica che cambierebbe la scelta</div>${lst(ap.mancanti)}<div>${esc(ap.verifica_che_cambia || "")}</div></div>
+      <div class="blk"><div class="eyebrow">Materiali interni usati</div><div class="tiny">${(r.usa && r.usa.note || []).length} note (${esc((r.usa && r.usa.note || []).map(n => n.id).join(", "))}) · ${(r.usa && r.usa.lezioni || []).length} lezioni: ${esc((r.usa && r.usa.lezioni || []).map(l => l.titolo + (l.pagina ? " (" + l.pagina + ")" : "")).join("; "))}</div></div>
+      ${r.messa_a_fuoco ? `<div class="blk"><div class="eyebrow">Messa a fuoco</div><div class="tiny">Decisione: ${esc(r.messa_a_fuoco.decisione || "")} · Risultato: ${esc(r.messa_a_fuoco.risultato || "")}${r.messa_a_fuoco.assunzione ? " · Assunzione: " + esc(r.messa_a_fuoco.assunzione) : ""}${r.messa_a_fuoco.motivo_ricerca ? " · Ricerca: " + esc(r.messa_a_fuoco.motivo_ricerca) : ""}</div></div>` : ""}
+    </div></details></div>`;
+  $("#copy-ver").addEventListener("click", () => copyText(txt));
+  $("#ver-agg").addEventListener("click", () => eseguiVerifica(a, r.domanda, true));
+  const ad = $("#add-ver"); if (ad) ad.addEventListener("click", async () => { const ni = { id: uid(), titolo: f.azione_proposta.titolo, tipo: "mia", da_chi: "", data: f.azione_proposta.data || "", argomento_id: a.id, stato: "aperto", creato: nowIso(), origine: "verifica", versioni: [] }; await save("impegni", ni.id, ni, { label: "Azione dalla verifica" }); toast("Azione aggiunta al Piano", true); });
+}
+// correzioni: segna «da aggiornare» solo le ricerche che hanno usato quel materiale
+async function segnaRicercheDipendenti(tipo, id) {
+  for (const a0 of Array.from(S.argomenti.values())) {
+    // rilegge dal server: il server può aver appena salvato una ricerca su questo argomento
+    let a = a0; if (S.db) { try { const d = await S.db.collection("argomenti").doc(a0.id).get(); if (d.exists) a = Object.assign({ id: a0.id }, d.data()); } catch (e) {} }
+    if (!Array.isArray(a.ricerche) || !a.ricerche.length) continue;
+    let cambia = false; const na = clone(a);
+    na.ricerche = na.ricerche.map(r => { const usa = r.usa || {}; const dip = tipo === "nota" ? (usa.note || []).some(n => n.id === id) : (usa.lezioni || []).some(l => l.id === id); if (dip && r.stato_analisi !== "da_aggiornare") { cambia = true; return Object.assign({}, r, { stato_analisi: "da_aggiornare", da_aggiornare_per: tipo + " " + id + " corretta il " + nowIso() }); } return r; });
+    if (cambia) { S.argomenti.set(a.id, na); await save("argomenti", a.id, na, { silent: true, noUndo: true, noRender: true, force: true }); }
+  }
+}
+
+// ---------- CERCA UNA FONTE SUL WEB (biblioteca) ----------
+function nomiRiservati(a) {
+  const n = ((S.profilo && S.profilo.persone) || []).map(p => String(p.nome || "").split(/[ ,(]/)[0]).filter(x => x.length > 2);
+  const t = String(a && a.titolo || "").split(/\s[—–-]\s/)[0].split(/[\s/]+/).filter(x => x.length > 2);
+  return Array.from(new Set(n.concat(t).map(x => x.toLowerCase())));
+}
+function apriFormCerca(a) {
+  const out = $("#coach-out");
+  out.innerHTML = `<div class="card inline-edit" style="border-color:var(--accent)"><div class="eyebrow">Cerca una fonte sul web</div>
+    <p class="muted">Scrivi la ricerca in termini generici (metodo, concetto, tipo di situazione). I tuoi appunti e i nomi di clienti e colleghi non vengono inviati alla ricerca. Il Coach fa più ricerche, scarta le pagine generiche o di seconda mano e tiene al massimo 3 fonti davvero utili (circa 1 centesimo a ricerca).</p>
+    <label for="cerca-q">Cosa cercare</label><input type="text" id="cerca-q" placeholder="es. valutazione dell'usato in permuta: criteri e errori comuni">
+    <label for="cerca-s">A cosa ti serve (facoltativo, generico)</label><input type="text" id="cerca-s" placeholder="es. preparare una trattativa con permuta">
+    <div id="cerca-avviso"></div>
+    <div class="row"><button class="primary" id="cerca-ok">Cerca</button><button class="quiet" id="cerca-an">Annulla</button></div></div>`;
+  $("#cerca-an").addEventListener("click", () => { out.innerHTML = ""; });
+  $("#cerca-ok").addEventListener("click", async () => {
+    const q = $("#cerca-q").value.trim(); const s = $("#cerca-s").value.trim(); if (!q) { $("#cerca-q").focus(); return; }
+    const ris = nomiRiservati(a); const trovati = ris.filter(x => (q + " " + s).toLowerCase().includes(x));
+    if (trovati.length && !$("#cerca-ok").dataset.conferma) { $("#cerca-avviso").innerHTML = `<div class="banner">Nella ricerca compaiono nomi di persone o aziende (${esc(trovati.join(", "))}). Meglio toglierli e usare termini generici. Premi di nuovo «Cerca» per procedere lo stesso.</div>`; $("#cerca-ok").dataset.conferma = "1"; return; }
+    await eseguiCerca(a, q, s);
+  });
+}
+async function eseguiCerca(a, q, s) {
+  const out = $("#coach-out");
+  out.innerHTML = `<div class="banner info"><span><span class="spin"></span> Cerco fonti sul web…</span></div>`;
+  let r;
+  try { const resp = await fetch("/api/cerca", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ query: q, scopo: s, criteri: (S.profilo && S.profilo.regole_fonti_future) || "" }) }); r = await resp.json(); if (!resp.ok || r.error) throw r; }
+  catch (e) { const o = $("#coach-out"); if (o) o.innerHTML = `<div class="banner err">Ricerca non riuscita (${esc(e && e.error || "errore")}). ${e && e.error === "not_configured" ? "Il server non ha la chiave Anthropic." : "Riprova più tardi."}</div>`; return; }
+  renderCerca(a, q, r);
+}
+function renderCerca(a, q, r) {
+  const out = $("#coach-out"); if (!out) return;
+  const ris = Array.isArray(r.risultati) ? r.risultati : [];
+  out.innerHTML = `<div class="coach-out card" style="border-color:var(--accent)">
+    <div class="tiny">Fonti trovate sul web · ${fmtTs(nowIso())} · ricerca: «${esc(q)}» · ${r.ricerche || 0} ricerche</div>
+    ${r.nota ? `<div class="muted">${esc(r.nota)}</div>` : ""}${r.scartate ? `<div class="tiny">Scartate: ${esc(r.scartate)}</div>` : ""}
+    ${ris.length ? ris.map((x, i) => `<div class="item"><div class="stripe ${x.verificato ? "mia" : "attesa"}"></div><div class="grow">
+      <div class="t">${esc(x.titolo)}</div>
+      <div class="meta">${esc(x.autore_istituzione)}${x.data ? " · " + esc(x.data) : ""} · <span class="chip">${esc(x.tipo)}</span></div>
+      <div>${esc(x.principio)}</div>
+      ${x.perche_scelta ? `<div class="meta">Perché: ${esc(x.perche_scelta)}</div>` : ""}
+      ${x.limite ? `<div class="meta">Limite: ${esc(x.limite)}</div>` : ""}
+      ${x.verificato ? `<div class="meta"><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.url)}</a></div>` : `<div class="meta"><span class="chip err">Indirizzo non confermato dalla ricerca</span>${x.url_non_verificato ? " " + esc(x.url_non_verificato) : ""}</div>`}
+      <div class="row"><button class="small" data-salva-fonte="${i}" ${x.verificato ? "" : "disabled"}>Salva in biblioteca</button></div></div></div>`).join("") : `<div class="empty">Nessuna fonte utile trovata. Prova con termini diversi.</div>`}
+    ${Array.isArray(r.trovate) && r.trovate.length ? `<details class="flat"><summary class="tiny">Pagine viste dalla ricerca (${r.trovate.length})</summary><div class="inner">${r.trovate.map(t => `<div class="tiny"><a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.titolo || t.url)}</a>${t.data ? " · " + esc(t.data) : ""}</div>`).join("")}</div></details>` : ""}
+    <p class="tiny">Le fonti servono a pensare, non certificano soluzioni tecniche o commerciali. Prima di citarle controlla contenuto e disponibilità.</p></div>`;
+  $$("[data-salva-fonte]", out).forEach(b => b.addEventListener("click", async () => {
+    const x = ris[Number(b.dataset.salvaFonte)]; if (!x || !x.verificato) return;
+    const l = { id: uid(), titolo: x.titolo, testo: `${x.titolo}\n${x.autore_istituzione}\n${x.url}\nData della pagina: ${x.data || "non indicata"}\nTipo: ${x.tipo}\n\nPrincipio: ${x.principio}\n\nLimite: ${x.limite}\n\nTrovata con la ricerca «${q}» il ${today()}; verificata solo come pagina pubblica, da rileggere prima di una citazione operativa.`, fonte: `${x.autore_istituzione} · ${x.url} · verificata il ${today()}`, tipo: "testo", asset_id: "", principi: [{ testo: x.principio, riferimento: x.tipo + (x.data ? " · " + x.data : "") }].concat(x.limite ? [{ testo: "LIMITE: " + x.limite, riferimento: "limite" }] : []), correzioni: [], istruzioni_sospette: false, creato: nowIso(), categoria: "fonte pubblica (ricerca web)", url: x.url, verificato: today(), argomento_origine: a ? a.id : "" };
+    await save("lezioni", l.id, l, { label: "Fonte salvata" }); b.disabled = true; b.textContent = "Salvata in biblioteca"; toast("Fonte salvata: il Coach la userà", true);
+  }));
 }
 
 // ---------- LEZIONI ----------
@@ -630,18 +850,20 @@ function renderLezioni() {
   $("#lezioni-count").textContent = lez.length ? "(" + lez.length + ")" : "";
   const el = $("#lezioni-elenco");
   el.innerHTML = lez.map(l => `<details data-lez="${l.id}"><summary>${esc(l.titolo)} <span class="tiny">${l.fonte ? esc(l.fonte) : ""}${l.istruzioni_sospette ? ' · <span class="chip err">conteneva istruzioni: ignorate</span>' : ""}</span></summary><div class="inner">
-    ${l.asset_id ? `<div><a href="/_blob/${esc(l.asset_id)}" target="_blank" rel="noopener">Apri l'originale (${esc(l.tipo || "file")})</a></div>` : ""}
+    ${l.asset_id ? `<div><a href="/_blob/${esc(l.asset_id)}" target="_blank" rel="noopener">Apri l'originale (${esc(l.tipo || "file")})</a></div>` : `<div class="tiny">Originale non collegato${l.fonte ? " · " + esc(String(l.fonte).split(" · ")[0].slice(0, 80)) : ""} ${S.assets ? `<button class="small quiet" data-lorig="${l.id}">Collega l'originale…</button><input type="file" data-lorigf="${l.id}" accept="application/pdf,image/*" hidden>` : ""}</div>`}
     ${(l.principi || []).length ? `<div class="eyebrow">Principi estratti</div><ul class="plain">${l.principi.map((p, i) => `<li>${esc(p.testo)} ${p.riferimento ? `<span class="tiny">[${esc(p.riferimento)}]</span>` : ""}${p.correzione ? `<div class="tiny">Correzione: ${esc(p.correzione)}</div>` : ""}<div class="row"><button class="small quiet" data-corr="${l.id}:${i}">Correggi</button></div></li>`).join("")}</ul>` : '<p class="muted">Nessun principio estratto.</p>'}
     ${l.testo ? `<details class="flat"><summary class="tiny">Testo originale</summary><div class="inner"><div class="muted" style="white-space:pre-wrap">${esc(l.testo.slice(0, 20000))}</div></div></details>` : ""}
     ${(l.correzioni || []).length ? `<div class="eyebrow">Correzioni</div><div class="versions">${l.correzioni.map(c => `<div>${fmtTs(c.quando)} · ${esc(c.testo)}</div>`).join("")}</div>` : ""}
     <div class="row"><button class="small quiet" data-lcorr="${l.id}">Aggiungi correzione generale</button><button class="small quiet" data-ldel="${l.id}">Elimina lezione</button></div>
     <div data-lform></div></div></details>`).join("");
   const form = (b) => $("[data-lform]", b.closest("details[data-lez]"));
-  $$("[data-corr]", el).forEach(b => b.addEventListener("click", () => { const [id, i] = b.dataset.corr.split(":"); const l = clone(S.lezioni.get(id)); const f = form(b); f.innerHTML = `<div class="inline-edit"><label>Correzione al principio</label><input type="text" id="lc-txt"><div class="row"><button class="primary small" id="lc-ok">Salva e aggiorna</button></div></div>`; $("#lc-ok").addEventListener("click", async () => { const t = $("#lc-txt").value.trim(); if (!t) return; l.principi[Number(i)].correzione = t; l.correzioni = (l.correzioni || []).concat([{ quando: nowIso(), testo: "Principio " + (Number(i) + 1) + ": " + t }]); await save("lezioni", l.id, l, { label: "Correzione lezione" }); await segnaAnalisiDipendenti(); toast("Correzione salvata: il Coach ne terrà conto", true); }); }));
-  $$("[data-lcorr]", el).forEach(b => b.addEventListener("click", () => { const l = clone(S.lezioni.get(b.dataset.lcorr)); const f = form(b); f.innerHTML = `<div class="inline-edit"><label>Correzione generale</label><input type="text" id="lg-txt"><div class="row"><button class="primary small" id="lg-ok">Salva e aggiorna</button></div></div>`; $("#lg-ok").addEventListener("click", async () => { const t = $("#lg-txt").value.trim(); if (!t) return; l.correzioni = (l.correzioni || []).concat([{ quando: nowIso(), testo: t }]); await save("lezioni", l.id, l, { label: "Correzione lezione" }); await segnaAnalisiDipendenti(); toast("Correzione salvata", true); }); }));
+  $$("[data-lorig]", el).forEach(b => b.addEventListener("click", () => { const inp = $(`[data-lorigf="${b.dataset.lorig}"]`, el); if (inp) inp.click(); }));
+  $$("[data-lorigf]", el).forEach(inp => inp.addEventListener("change", async () => { const file = inp.files[0]; inp.value = ""; if (!file || !S.assets) return; const l = clone(S.lezioni.get(inp.dataset.lorigf)); if (!l) return; try { toast("Carico l'originale…"); const up = await S.assets.upload(file); l.asset_id = up.id; l.tipo = file.type === "application/pdf" ? "pdf" : "foto"; l.originale = file.name; l.versioni = (l.versioni || []).concat([{ quando: nowIso(), cosa: "Originale collegato: " + file.name }]); await save("lezioni", l.id, l, { label: "Originale collegato" }); toast("Originale collegato alla lezione", true); } catch (e) { toast("Originale non caricato (" + (e && e.code || "errore") + ")"); } }));
+  $$("[data-corr]", el).forEach(b => b.addEventListener("click", () => { const [id, i] = b.dataset.corr.split(":"); const l = clone(S.lezioni.get(id)); const f = form(b); f.innerHTML = `<div class="inline-edit"><label>Correzione al principio</label><input type="text" id="lc-txt"><div class="row"><button class="primary small" id="lc-ok">Salva e aggiorna</button></div></div>`; $("#lc-ok").addEventListener("click", async () => { const t = $("#lc-txt").value.trim(); if (!t) return; l.principi[Number(i)].correzione = t; l.correzioni = (l.correzioni || []).concat([{ quando: nowIso(), testo: "Principio " + (Number(i) + 1) + ": " + t }]); await save("lezioni", l.id, l, { label: "Correzione lezione" }); await segnaAnalisiDipendenti(l.id); toast("Correzione salvata: il Coach ne terrà conto", true); }); }));
+  $$("[data-lcorr]", el).forEach(b => b.addEventListener("click", () => { const l = clone(S.lezioni.get(b.dataset.lcorr)); const f = form(b); f.innerHTML = `<div class="inline-edit"><label>Correzione generale</label><input type="text" id="lg-txt"><div class="row"><button class="primary small" id="lg-ok">Salva e aggiorna</button></div></div>`; $("#lg-ok").addEventListener("click", async () => { const t = $("#lg-txt").value.trim(); if (!t) return; l.correzioni = (l.correzioni || []).concat([{ quando: nowIso(), testo: t }]); await save("lezioni", l.id, l, { label: "Correzione lezione" }); await segnaAnalisiDipendenti(l.id); toast("Correzione salvata", true); }); }));
   $$("[data-ldel]", el).forEach(b => b.addEventListener("click", () => { const l = S.lezioni.get(b.dataset.ldel); const f = form(b); f.innerHTML = `<div class="banner err">Eliminare «${esc(l.titolo)}» e il suo originale? <div class="row"><button class="small" id="ld-ok">Sì, elimina</button><button class="small quiet" id="ld-no">No</button></div></div>`; $("#ld-no").addEventListener("click", renderLezioni); $("#ld-ok").addEventListener("click", async () => { if (l.asset_id && S.assets) { try { await S.assets.delete(l.asset_id); } catch (e) {} } await del("lezioni", l.id); }); }));
 }
-async function segnaAnalisiDipendenti() { for (const a of Array.from(S.argomenti.values())) { if (a.ultimo_coach && !a.ultimo_coach.da_aggiornare) { const na = clone(a); na.ultimo_coach.da_aggiornare = true; await save("argomenti", a.id, na, { silent: true, noUndo: true, noRender: true }); } } if (S.coachOut) { S.coachOut = null; } renderAll(); }
+async function segnaAnalisiDipendenti(lezioneId) { S.gen = (S.gen || 0) + 1; if (lezioneId) await segnaRicercheDipendenti("lezione", lezioneId); for (const a of Array.from(S.argomenti.values())) { if (a.ultimo_coach && !a.ultimo_coach.da_aggiornare) { const na = clone(a); na.ultimo_coach.da_aggiornare = true; await save("argomenti", a.id, na, { silent: true, noUndo: true, noRender: true }); } } if (S.coachOut) { S.coachOut = null; } renderAll(); }
 async function estraiTestoPDF(file) {
   if (!window.pdfjsLib) throw new Error("pdfjs");
   pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
@@ -687,18 +909,18 @@ function bindNotaActions(root) {
     mk("Correggi", () => { acts.innerHTML = `<div class="inline-edit"><label>Aggiunta o correzione (es. «Mi ero dimenticato che…»)</label><input type="text" id="nc-${n.id}"><div class="row"><button class="primary small" id="nco-${n.id}">Salva e aggiorna</button><button class="small quiet" id="ncs-${n.id}">Salva solo</button><button class="small quiet" id="nca-${n.id}">Annulla</button></div></div>`;
       $("#nca-" + n.id).addEventListener("click", renderAll);
       const salva = async () => { const t = $("#nc-" + n.id).value.trim(); if (!t) return null; const nn = clone(n); nn.correzioni = (nn.correzioni || []).concat([{ quando: nowIso(), testo: t }]); await save("note", n.id, nn, { label: "Correzione nota" }); return { nn, t }; };
-      $("#ncs-" + n.id).addEventListener("click", async () => { if (await salva()) toast("Correzione salvata", true); });
+      $("#ncs-" + n.id).addEventListener("click", async () => { if (await salva()) { await segnaRicercheDipendenti("nota", n.id); renderAll(); toast("Correzione salvata", true); } });
       $("#nco-" + n.id).addEventListener("click", async () => { const r = await salva(); if (r) await aggiornaDopoCorrezione(r.nn, r.t); });
     });
     mk("Modifica", () => { acts.innerHTML = `<div class="inline-edit"><label>Testo (l'originale resta nelle versioni)</label><textarea id="ne-${n.id}">${esc(n.testo_originale)}</textarea><label for="nd-${n.id}">Data della nota</label><input type="date" id="nd-${n.id}" value="${esc(n.data_nota)}" style="width:auto"><div class="row"><button class="primary small" id="neo-${n.id}">Salva modifica</button><button class="small quiet" id="nea-${n.id}">Annulla</button></div></div>`;
       $("#nea-" + n.id).addEventListener("click", renderAll);
-      $("#neo-" + n.id).addEventListener("click", async () => { const t = $("#ne-" + n.id).value.trim(); const d = $("#nd-" + n.id).value || n.data_nota; if (!t) return; const nn = clone(n); nn.versioni_testo = (nn.versioni_testo || []).concat([{ quando: nowIso(), testo: n.testo_originale, data_nota: n.data_nota }]); nn.testo_originale = t; nn.data_nota = d; await save("note", n.id, nn, { label: "Modifica nota" }); toast("Modifica salvata, originale conservato", true); });
+      $("#neo-" + n.id).addEventListener("click", async () => { const t = $("#ne-" + n.id).value.trim(); const d = $("#nd-" + n.id).value || n.data_nota; if (!t) return; const nn = clone(n); nn.versioni_testo = (nn.versioni_testo || []).concat([{ quando: nowIso(), testo: n.testo_originale, data_nota: n.data_nota }]); nn.testo_originale = t; nn.data_nota = d; await save("note", n.id, nn, { label: "Modifica nota" }); await segnaRicercheDipendenti("nota", n.id); renderAll(); toast("Modifica salvata, originale conservato", true); });
     });
     if (n.analisi_stato === "da_aggiornare" && S.sample) mk("Rifai l'analisi", () => { showView("piano"); analizzaNota(n); });
     mk("Copia", () => copyText(n.testo_originale + ((n.correzioni || []).length ? "\n\nCorrezioni: " + n.correzioni.map(c => c.testo).join(" | ") : "")));
   });
 }
-async function aggiornaDopoCorrezione(n, corr) {
+async function aggiornaDopoCorrezione(n, corr) { S.gen = (S.gen || 0) + 1; await segnaRicercheDipendenti("nota", n.id);
   if (!S.sample) { toast("Analisi non disponibile qui: correzione salvata"); return; }
   toast("Aggiorno i dati collegati…");
   const argIds = n.argomento_ids || []; const imps = Array.from(S.impegni.values()).filter(i => (argIds.includes(i.argomento_id) || i.origine_nota_id === n.id) && i.stato === "aperto");
