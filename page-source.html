@@ -759,6 +759,7 @@ function renderCoachScheda() {
   $("#btn-visita").addEventListener("click", () => apriFormVisita(a));
   $("#btn-cerca").addEventListener("click", () => apriFormCerca(a));
   $("#btn-verifica").addEventListener("click", () => apriFormVerifica(a));
+  if (!S.coachOut && S.extraOut && S.extraOut.arg === a.id && typeof S.extraOut.render === "function") S.extraOut.render();
   $$("[data-ric-apri]", root).forEach(b => b.addEventListener("click", () => { const r = (S.argomenti.get(a.id).ricerche || []).find(x => x.id === b.dataset.ricApri); if (r) renderVerifica(a, r, false); }));
   $$("[data-ric-agg]", root).forEach(b => b.addEventListener("click", () => { const r = (S.argomenti.get(a.id).ricerche || []).find(x => x.id === b.dataset.ricAgg); if (r) eseguiVerifica(a, r.domanda, true); }));
   $("#btn-parlato").addEventListener("click", () => { showView("piano"); const ta = $("#nota"); ta.value = "Ho parlato con … su «" + a.titolo + "»: "; ta.focus(); });
@@ -930,6 +931,7 @@ Rispondi solo con JSON:
 }
 function renderVisita(a, r, quando) {
   const out = $("#coach-out"); if (!out) return;
+  S.coachOut = null; S.extraOut = { arg: a.id, render: () => renderVisita(a, r, quando) };
   const lst = (arr) => Array.isArray(arr) && arr.length ? `<ul class="plain">${arr.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
   const dom = Array.isArray(r.domande) ? r.domande : [];
   const txt = `Preparazione visita · ${a.titolo} · ${fmtTs(quando)}\n\nObiettivo\n${r.obiettivo || ""}\n\nApertura\n${r.apertura || ""}\n\nDomande\n${dom.map((d, i) => (i + 1) + ". " + d).join("\n")}\n${r.obiezione && r.obiezione.probabile ? "\nSe dice: " + r.obiezione.probabile + "\nRispondere: " + (r.obiezione.risposta || "") + "\n" : ""}\nDa evitare\n${(r.evitare || []).join("\n")}\n\nProssimo passo (proposta)\n${r.prossimo_passo || ""}\n\nFondamento\n${(r.fondamento && r.fondamento.testo) || ""} (${(r.fondamento && r.fondamento.fonte) || ""})${r.fondamento && r.fondamento.nesso ? " — " + r.fondamento.nesso : ""}\n\nFatti: ${(r.fatti || []).join(" · ")}\nIpotesi: ${(r.ipotesi || []).join(" · ")}${r.domanda_mancante ? "\nDa chiarire prima: " + r.domanda_mancante : ""}\n\nGenerato dal Coach; proposte da verificare con i fatti.`;
@@ -975,6 +977,7 @@ async function eseguiVerifica(a, domanda, forza) {
 }
 function renderVerifica(a, r, appena) {
   const out = $("#coach-out"); if (!out) return; const f = r.risposta || {}; const ap = f.approfondisci || {};
+  S.coachOut = null; S.extraOut = { arg: a.id, render: () => renderVerifica(a, r, appena) };
   const lst = (arr) => Array.isArray(arr) && arr.length ? `<ul class="plain">${arr.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
   const ev = Array.isArray(r.evidenze) ? r.evidenze : []; const evDi = (k) => { const m = /E(\d+)/.exec(String(k)); return m ? ev[Number(m[1]) - 1] : null; };
   const onlineRef = (Array.isArray(f.fondamento && f.fondamento.online) ? f.fondamento.online : []).map(evDi).filter(Boolean);
@@ -1056,6 +1059,7 @@ async function eseguiCerca(a, q, s) {
 }
 function renderCerca(a, q, r) {
   const out = $("#coach-out"); if (!out) return;
+  S.coachOut = null; S.extraOut = { arg: a ? a.id : "", render: () => renderCerca(a, q, r) };
   const ris = Array.isArray(r.risultati) ? r.risultati : [];
   out.innerHTML = `<div class="coach-out card" style="border-color:var(--accent)">
     <div class="tiny">Fonti trovate sul web · ${fmtTs(nowIso())} · ricerca: «${esc(q)}» · ${r.ricerche || 0} ricerche</div>
