@@ -742,7 +742,7 @@ function renderCoachScheda() {
       <dt>Quando</dt><dd>${pa ? (pa.data ? fmtDate(pa.data) : pa.data_da_chiarire ? "da chiarire" : "senza data") : a.posso_aspettare ? "Puoi aspettare: " + esc(a.posso_aspettare) : "—"}</dd>
       ${a.ultimo_coach && a.ultimo_coach.da_aggiornare ? `<dt>Coach</dt><dd><span class="chip err">Analisi da aggiornare</span> <span class="tiny">dopo una correzione</span></dd>` : ""}
     </dl>
-    <div class="row"><button class="primary" id="btn-coach" ${S.sample ? "" : "disabled"}>Chiedi al Coach</button><button id="btn-parlato">Ho parlato</button><button id="btn-visita" ${S.sample ? "" : "disabled"}>Prepara la visita</button><button class="quiet" id="btn-arg-mod">Modifica scheda</button>${a.stato === "archiviato" ? '<button class="quiet" id="btn-riapri">Riapri</button>' : '<button class="quiet" id="btn-archivia">Archivia</button>'}</div>
+    <div class="row"><button class="primary" id="btn-coach" ${S.sample ? "" : "disabled"}>Chiedi al Coach</button><button id="btn-parlato">Ho parlato</button><button id="btn-visita" ${S.sample ? "" : "disabled"}>Prepara la visita</button><button id="btn-verifica" ${S.sample ? "" : "disabled"}>Verifica online</button><button class="quiet" id="btn-cerca" ${S.sample ? "" : "disabled"}>Cerca una fonte sul web</button><button class="quiet" id="btn-arg-mod">Modifica scheda</button>${a.stato === "archiviato" ? '<button class="quiet" id="btn-riapri">Riapri</button>' : '<button class="quiet" id="btn-archivia">Archivia</button>'}</div>
     <div id="coach-out"></div>
     <details><summary>Approfondisci: situazione, impegni, note, versioni</summary><div class="inner">
       <div><b>Situazione:</b> ${esc(a.situazione || "—")}</div>
@@ -750,12 +750,17 @@ function renderCoachScheda() {
       ${aperti.length ? `<div class="eyebrow">Impegni aperti</div><div class="list">${aperti.map(impegnoHTML).join("")}</div>` : `<p class="muted">Nessun impegno aperto.</p>`}
       ${fatti.length ? `<div class="eyebrow">Esiti recenti</div>${fatti.map(impegnoHTML).join("")}` : ""}
       <div class="eyebrow">Note collegate (${note.length})</div>${note.length ? note.slice(0, 10).map(notaHTML).join("") : '<p class="muted">Nessuna nota collegata.</p>'}
+      ${(a.ricerche || []).length ? `<div class="eyebrow">Verifiche online salvate</div><div class="list">${a.ricerche.slice().reverse().map(r => `<div class="item"><div class="stripe ${r.stato_analisi === "da_aggiornare" ? "attesa" : "mia"}"></div><div class="grow"><div class="t">${esc(r.domanda)}</div><div class="meta">${fmtTs(r.quando)} · ricerca ${esc(r.stato)}${r.stato_analisi === "da_aggiornare" ? ' · <span class="chip err">Da aggiornare</span>' : ""} · ${(r.evidenze || []).length} fonti</div><div class="row"><button class="small quiet" data-ric-apri="${r.id}">Apri</button><button class="small quiet" data-ric-agg="${r.id}">Aggiorna ricerca</button></div></div></div>`).join("")}</div>` : ""}
       ${(a.versioni || []).length ? `<div class="eyebrow">Versioni della situazione</div><div class="versions">${a.versioni.slice().reverse().map(v => `<div>${fmtTs(v.quando)} · ${esc(v.cosa)}</div>`).join("")}</div>` : ""}
     </div></details></div>`;
   root.innerHTML = h;
   if (S.coachOut) renderCoachOut(S.coachOut);
   $("#btn-coach").addEventListener("click", () => chiediCoach(a));
   $("#btn-visita").addEventListener("click", () => apriFormVisita(a));
+  $("#btn-cerca").addEventListener("click", () => apriFormCerca(a));
+  $("#btn-verifica").addEventListener("click", () => apriFormVerifica(a));
+  $$("[data-ric-apri]", root).forEach(b => b.addEventListener("click", () => { const r = (S.argomenti.get(a.id).ricerche || []).find(x => x.id === b.dataset.ricApri); if (r) renderVerifica(a, r, false); }));
+  $$("[data-ric-agg]", root).forEach(b => b.addEventListener("click", () => { const r = (S.argomenti.get(a.id).ricerche || []).find(x => x.id === b.dataset.ricAgg); if (r) eseguiVerifica(a, r.domanda, true); }));
   $("#btn-parlato").addEventListener("click", () => { showView("piano"); const ta = $("#nota"); ta.value = "Ho parlato con … su «" + a.titolo + "»: "; ta.focus(); });
   $("#btn-arg-mod").addEventListener("click", () => apriFormArgomento(a));
   const arch = $("#btn-archivia"); if (arch) arch.addEventListener("click", async () => { const na = clone(a); na.stato = "archiviato"; na.archiviato_il = nowIso(); na.versioni = (na.versioni || []).concat([{ quando: nowIso(), cosa: "Archiviato" }]); await save("argomenti", a.id, na, { label: "Archivia" }); toast("Archiviato: la storia resta, nessuna nuova attività", true); });
@@ -947,6 +952,131 @@ function renderVisita(a, r, quando) {
   $("#copy-vis").addEventListener("click", () => copyText(txt));
 }
 
+// ---------- VERIFICA ONLINE (metodo A–G, eseguito dal server) ----------
+function apriFormVerifica(a) {
+  const out = $("#coach-out");
+  out.innerHTML = `<div class="card inline-edit" style="border-color:var(--accent)"><div class="eyebrow">Verifica online · ${esc(a.titolo)}</div>
+    <p class="muted">Il Coach mette a fuoco la decisione con i tuoi appunti e le lezioni, cerca online solo i fatti esterni che contano (con termini pubblici, senza nomi privati), legge le pagine decisive e ti dà una risposta breve con le fonti sotto «Approfondisci».</p>
+    <label for="ver-q">Domanda o decisione</label><input type="text" id="ver-q" value="Cosa conviene fare adesso su «${esc(a.titolo)}»?">
+    <div class="row"><button class="primary" id="ver-ok">Verifica</button><button class="quiet" id="ver-an">Annulla</button></div></div>`;
+  $("#ver-an").addEventListener("click", () => { out.innerHTML = ""; });
+  $("#ver-ok").addEventListener("click", () => eseguiVerifica(a, $("#ver-q").value.trim(), true));
+}
+async function eseguiVerifica(a, domanda, forza) {
+  const out = $("#coach-out"); const avvio = Date.now(); S.verificaInCorso = { arg: a.id, avvio };
+  out.innerHTML = `<div class="banner info"><span><span class="spin"></span> Ricerca in corso… (messa a fuoco, ricerca e lettura, confronto: può volerci più di un minuto)</span></div>`;
+  let r;
+  try { const resp = await fetch("/api/verifica", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ argomento_id: a.id, domanda, forza_ricerca: !!forza }) }); r = await resp.json(); if (!resp.ok || r.error) throw r; }
+  catch (e) { const o = $("#coach-out"); if (o && S.verificaInCorso && S.verificaInCorso.avvio === avvio) o.innerHTML = `<div class="banner err">Verifica non disponibile (${esc(e && e.error || "errore")}). ${e && e.error === "not_configured" ? "Il server non ha la chiave Anthropic: posso rispondere solo sui materiali interni con «Chiedi al Coach»." : "I dati sono salvati; riprova più tardi."}</div>`; return; }
+  // esiti fuori ordine: una risposta più vecchia non sovrascrive una più recente
+  if (!S.verificaInCorso || S.verificaInCorso.arg !== a.id || S.verificaInCorso.avvio !== avvio) return;
+  const cur = S.argomenti.get(a.id); const ultima = cur && (cur.ricerche || []).slice(-1)[0]; if (ultima && ultima.quando > r.quando) return;
+  renderVerifica(a, r, true);
+}
+function renderVerifica(a, r, appena) {
+  const out = $("#coach-out"); if (!out) return; const f = r.risposta || {}; const ap = f.approfondisci || {};
+  const lst = (arr) => Array.isArray(arr) && arr.length ? `<ul class="plain">${arr.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
+  const ev = Array.isArray(r.evidenze) ? r.evidenze : []; const evDi = (k) => { const m = /E(\d+)/.exec(String(k)); return m ? ev[Number(m[1]) - 1] : null; };
+  const onlineRef = (Array.isArray(f.fondamento && f.fondamento.online) ? f.fondamento.online : []).map(evDi).filter(Boolean);
+  const interni = Array.isArray(f.fondamento && f.fondamento.interni) ? f.fondamento.interni : [];
+  const superata = r.stato_analisi === "da_aggiornare";
+  const statoTxt = r.stato === "non necessaria" ? "nessuna ricerca online necessaria (memoria interna)" : r.stato === "non disponibile" ? "ricerca online NON disponibile" : `ricerca online ${r.stato} (${r.ricerche || 0} ricerche, ${r.letture || 0} pagine lette)`;
+  const fontiTxt = ev.map((e, i) => `[E${i + 1}] ${e.titolo} — ${e.autore_ente} · pubblicata: ${e.data_pubblicazione} · consultata: ${fmtTs(e.consultata)} · ${e.letta ? "letta" : "non letta (solo risultato)"} · ${e.url}\n   sostiene: ${e.affermazione}\n   limite: ${e.limite}`).join("\n");
+  const txt = `Verifica online · ${a.titolo} · ${fmtTs(r.quando)}${superata ? "\nATTENZIONE: da aggiornare dopo una correzione" : ""}\nDomanda: ${r.domanda}\n\nIn breve\n${f.in_breve || ""}\n\nProssima mossa\n${f.prossima_mossa || ""}\nChi e quando: ${f.chi_e_quando || "da concordare"}\n${f.cosa_dire ? "\nCosa dire\n" + f.cosa_dire + "\n" : ""}\nFondamento\n${interni.map(x => `- ${x.tipo} ${x.id}${x.riferimento ? " (" + x.riferimento + ")" : ""}: ${x.passaggio || ""}`).join("\n")}\n${fontiTxt ? "Fonti online consultate il " + fmtTs(r.quando) + ":\n" + fontiTxt + "\n" : ""}${f.limite_decisivo ? "\nLimite decisivo\n" + f.limite_decisivo + "\n" : ""}\nSupporto: ${f.supporto || ""} — ${f.motivo_supporto || ""}\nStato: ${statoTxt}${(r.mancanti || []).length ? "\nMateriali mancanti: " + r.mancanti.join("; ") : ""}\n\nApprofondisci\nFatto cercato: ${ap.fatto_cercato || ""}\nCriteri: ${(ap.criteri || []).join("; ")}\nAlternative: ${(ap.alternative || []).join("; ")}\nContraddizioni: ${(ap.contraddizioni || []).join("; ")}\nEvidenze per conclusione: ${(ap.evidenze_per_conclusione || []).join("; ")}\nApplicazione: ${ap.passaggio_applicazione || ""}\nMancanti: ${(ap.mancanti || []).join("; ")}\nVerifica che cambierebbe la scelta: ${ap.verifica_che_cambia || ""}\n\nGenerato dal Coach; fonti e incertezze incluse; proposte da verificare con i fatti.`;
+  out.innerHTML = `<div class="coach-out card" style="border-color:var(--accent)">
+    <div class="tiny">Verifica online · ${fmtTs(r.quando)}${appena ? "" : " (ricerca salvata, non appena eseguita)"} · ${esc(statoTxt)}</div>
+    ${superata ? `<div class="banner err">Da aggiornare: dopo questa verifica hai corretto un materiale che usava. Premi «Aggiorna ricerca».</div>` : ""}
+    ${f.istruzioni_sospette ? `<div class="banner err">Nel materiale c'erano frasi rivolte all'assistente: ignorate.</div>` : ""}
+    ${r.messa_a_fuoco && r.messa_a_fuoco.domanda_a_luigi ? `<div class="banner info"><b>Una domanda per te:</b> ${esc(r.messa_a_fuoco.domanda_a_luigi)}</div>` : ""}
+    <div class="blk"><div class="eyebrow">In breve</div><div>${esc(f.in_breve || "")}</div></div>
+    <div class="blk"><div class="eyebrow">Prossima mossa</div><div>${esc(f.prossima_mossa || "")}</div><div class="tiny">Chi e quando: ${esc(f.chi_e_quando || "da concordare")}</div></div>
+    ${f.cosa_dire ? `<div class="blk"><div class="eyebrow">Cosa dire</div><div class="quote">${esc(f.cosa_dire)}</div></div>` : ""}
+    <div class="blk"><div class="eyebrow">Fondamento</div>${interni.length ? `<ul class="plain">${interni.map(x => `<li>${esc(x.tipo)} <span class="tiny">${esc(x.id)}${x.riferimento ? " · " + esc(x.riferimento) : ""}</span>: ${esc(x.passaggio || "")}</li>`).join("")}</ul>` : '<div class="muted">Nessun riferimento interno dichiarato.</div>'}${onlineRef.length ? `<div class="tiny">Fonti online consultate il ${fmtTs(r.quando)}:</div><ul class="plain">${onlineRef.map(e => `<li><a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.titolo || e.url)}</a> <span class="tiny">${esc(e.autore_ente)} · pubblicata: ${esc(e.data_pubblicazione)} · ${e.letta ? "letta" : "non letta"}</span></li>`).join("")}</ul>` : ""}</div>
+    ${f.limite_decisivo ? `<div class="blk"><div class="eyebrow">Limite decisivo</div><div>${esc(f.limite_decisivo)}</div></div>` : ""}
+    <div class="row"><span class="chip ${f.supporto === "Ben supportato" ? "ok" : f.supporto === "Parziale" ? "attesa" : "err"}">${esc(f.supporto || "Da verificare")}</span><span class="tiny">${esc(f.motivo_supporto || "")}</span></div>
+    ${(r.mancanti || []).length ? `<div class="banner"><b>Materiali mancanti o non confermati</b>${lst(r.mancanti)}</div>` : ""}
+    <div class="row"><button class="small" id="copy-ver">Copia output</button><button class="small quiet" id="ver-agg">Aggiorna ricerca</button>${f.azione_proposta && f.azione_proposta.titolo ? `<button class="small primary" id="add-ver">Aggiungi come azione mia: ${esc(f.azione_proposta.titolo)}</button>` : ""}</div>
+    <details><summary>Approfondisci: fonti, criteri, alternative, limiti</summary><div class="inner">
+      <div class="blk"><div class="eyebrow">Fatto cercato</div><div>${esc(ap.fatto_cercato || (r.fatti_esterni || []).map(x => x.fatto).join(" · ") || "—")}</div>${(r.query_filtrate || []).length ? `<div class="tiny">Nomi riservati tolti dalle ricerche prima dell'invio.</div>` : ""}</div>
+      <div class="blk"><div class="eyebrow">Criteri</div>${lst(ap.criteri) || '<div class="muted">—</div>'}</div>
+      <div class="blk"><div class="eyebrow">Fonti online (${ev.length})</div>${ev.length ? `<div class="list">${ev.map((e, i) => `<div class="item"><div class="stripe ${e.letta ? "mia" : "attesa"}"></div><div class="grow"><div class="t">[E${i + 1}] ${esc(e.titolo || e.url)}</div><div class="meta">${esc(e.autore_ente)} · <span class="chip">${esc(e.tipo)}</span> · pubblicata: ${esc(e.data_pubblicazione)} · consultata: ${fmtTs(e.consultata)} · ${e.letta ? "letta integralmente" : "solo risultato di ricerca"}</div><div>${esc(e.affermazione)}</div><div class="meta">Limite: ${esc(e.limite)}</div>${e.indipendente ? `<div class="meta">Indipendente da: ${esc(e.indipendente)}</div>` : ""}<div class="meta"><a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.url)}</a></div></div></div>`).join("")}</div>` : `<div class="muted">${esc(r.nota_ricerca || "Nessuna fonte online usata.")}</div>`}${r.nota_ricerca && ev.length ? `<div class="tiny">${esc(r.nota_ricerca)}</div>` : ""}${(r.contrasti || []).length ? `<div class="banner"><b>Contrasti tra fonti</b>${lst(r.contrasti)}</div>` : ""}</div>
+      ${lst(ap.alternative) ? `<div class="blk"><div class="eyebrow">Alternative</div>${lst(ap.alternative)}</div>` : ""}
+      ${lst(ap.contraddizioni) ? `<div class="banner"><b>Contraddizioni</b>${lst(ap.contraddizioni)}</div>` : ""}
+      <div class="blk"><div class="eyebrow">Evidenze per ciascuna conclusione</div>${lst(ap.evidenze_per_conclusione) || '<div class="muted">—</div>'}</div>
+      <div class="blk"><div class="eyebrow">Dall'evidenza al caso</div><div>${esc(ap.passaggio_applicazione || "—")}</div></div>
+      <div class="blk"><div class="eyebrow">Mancanti e verifica che cambierebbe la scelta</div>${lst(ap.mancanti)}<div>${esc(ap.verifica_che_cambia || "")}</div></div>
+      <div class="blk"><div class="eyebrow">Materiali interni usati</div><div class="tiny">${(r.usa && r.usa.note || []).length} note (${esc((r.usa && r.usa.note || []).map(n => n.id).join(", "))}) · ${(r.usa && r.usa.lezioni || []).length} lezioni: ${esc((r.usa && r.usa.lezioni || []).map(l => l.titolo + (l.pagina ? " (" + l.pagina + ")" : "")).join("; "))}</div></div>
+      ${r.messa_a_fuoco ? `<div class="blk"><div class="eyebrow">Messa a fuoco</div><div class="tiny">Decisione: ${esc(r.messa_a_fuoco.decisione || "")} · Risultato: ${esc(r.messa_a_fuoco.risultato || "")}${r.messa_a_fuoco.assunzione ? " · Assunzione: " + esc(r.messa_a_fuoco.assunzione) : ""}${r.messa_a_fuoco.motivo_ricerca ? " · Ricerca: " + esc(r.messa_a_fuoco.motivo_ricerca) : ""}</div></div>` : ""}
+    </div></details></div>`;
+  $("#copy-ver").addEventListener("click", () => copyText(txt));
+  $("#ver-agg").addEventListener("click", () => eseguiVerifica(a, r.domanda, true));
+  const ad = $("#add-ver"); if (ad) ad.addEventListener("click", async () => { const ni = { id: uid(), titolo: f.azione_proposta.titolo, tipo: "mia", da_chi: "", data: f.azione_proposta.data || "", argomento_id: a.id, stato: "aperto", creato: nowIso(), origine: "verifica", versioni: [] }; await save("impegni", ni.id, ni, { label: "Azione dalla verifica" }); toast("Azione aggiunta al Piano", true); });
+}
+// correzioni: segna «da aggiornare» solo le ricerche che hanno usato quel materiale
+async function segnaRicercheDipendenti(tipo, id) {
+  for (const a0 of Array.from(S.argomenti.values())) {
+    // rilegge dal server: il server può aver appena salvato una ricerca su questo argomento
+    let a = a0; if (S.db) { try { const d = await S.db.collection("argomenti").doc(a0.id).get(); if (d.exists) a = Object.assign({ id: a0.id }, d.data()); } catch (e) {} }
+    if (!Array.isArray(a.ricerche) || !a.ricerche.length) continue;
+    let cambia = false; const na = clone(a);
+    na.ricerche = na.ricerche.map(r => { const usa = r.usa || {}; const dip = tipo === "nota" ? (usa.note || []).some(n => n.id === id) : (usa.lezioni || []).some(l => l.id === id); if (dip && r.stato_analisi !== "da_aggiornare") { cambia = true; return Object.assign({}, r, { stato_analisi: "da_aggiornare", da_aggiornare_per: tipo + " " + id + " corretta il " + nowIso() }); } return r; });
+    if (cambia) { S.argomenti.set(a.id, na); await save("argomenti", a.id, na, { silent: true, noUndo: true, noRender: true, force: true }); }
+  }
+}
+
+// ---------- CERCA UNA FONTE SUL WEB (biblioteca) ----------
+function nomiRiservati(a) {
+  const n = ((S.profilo && S.profilo.persone) || []).map(p => String(p.nome || "").split(/[ ,(]/)[0]).filter(x => x.length > 2);
+  const t = String(a && a.titolo || "").split(/\s[—–-]\s/)[0].split(/[\s/]+/).filter(x => x.length > 2);
+  return Array.from(new Set(n.concat(t).map(x => x.toLowerCase())));
+}
+function apriFormCerca(a) {
+  const out = $("#coach-out");
+  out.innerHTML = `<div class="card inline-edit" style="border-color:var(--accent)"><div class="eyebrow">Cerca una fonte sul web</div>
+    <p class="muted">Scrivi la ricerca in termini generici (metodo, concetto, tipo di situazione). I tuoi appunti e i nomi di clienti e colleghi non vengono inviati alla ricerca. Il Coach fa più ricerche, scarta le pagine generiche o di seconda mano e tiene al massimo 3 fonti davvero utili (circa 1 centesimo a ricerca).</p>
+    <label for="cerca-q">Cosa cercare</label><input type="text" id="cerca-q" placeholder="es. valutazione dell'usato in permuta: criteri e errori comuni">
+    <label for="cerca-s">A cosa ti serve (facoltativo, generico)</label><input type="text" id="cerca-s" placeholder="es. preparare una trattativa con permuta">
+    <div id="cerca-avviso"></div>
+    <div class="row"><button class="primary" id="cerca-ok">Cerca</button><button class="quiet" id="cerca-an">Annulla</button></div></div>`;
+  $("#cerca-an").addEventListener("click", () => { out.innerHTML = ""; });
+  $("#cerca-ok").addEventListener("click", async () => {
+    const q = $("#cerca-q").value.trim(); const s = $("#cerca-s").value.trim(); if (!q) { $("#cerca-q").focus(); return; }
+    const ris = nomiRiservati(a); const trovati = ris.filter(x => (q + " " + s).toLowerCase().includes(x));
+    if (trovati.length && !$("#cerca-ok").dataset.conferma) { $("#cerca-avviso").innerHTML = `<div class="banner">Nella ricerca compaiono nomi di persone o aziende (${esc(trovati.join(", "))}). Meglio toglierli e usare termini generici. Premi di nuovo «Cerca» per procedere lo stesso.</div>`; $("#cerca-ok").dataset.conferma = "1"; return; }
+    await eseguiCerca(a, q, s);
+  });
+}
+async function eseguiCerca(a, q, s) {
+  const out = $("#coach-out");
+  out.innerHTML = `<div class="banner info"><span><span class="spin"></span> Cerco fonti sul web…</span></div>`;
+  let r;
+  try { const resp = await fetch("/api/cerca", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ query: q, scopo: s, criteri: (S.profilo && S.profilo.regole_fonti_future) || "" }) }); r = await resp.json(); if (!resp.ok || r.error) throw r; }
+  catch (e) { const o = $("#coach-out"); if (o) o.innerHTML = `<div class="banner err">Ricerca non riuscita (${esc(e && e.error || "errore")}). ${e && e.error === "not_configured" ? "Il server non ha la chiave Anthropic." : "Riprova più tardi."}</div>`; return; }
+  renderCerca(a, q, r);
+}
+function renderCerca(a, q, r) {
+  const out = $("#coach-out"); if (!out) return;
+  const ris = Array.isArray(r.risultati) ? r.risultati : [];
+  out.innerHTML = `<div class="coach-out card" style="border-color:var(--accent)">
+    <div class="tiny">Fonti trovate sul web · ${fmtTs(nowIso())} · ricerca: «${esc(q)}» · ${r.ricerche || 0} ricerche</div>
+    ${r.nota ? `<div class="muted">${esc(r.nota)}</div>` : ""}${r.scartate ? `<div class="tiny">Scartate: ${esc(r.scartate)}</div>` : ""}
+    ${ris.length ? ris.map((x, i) => `<div class="item"><div class="stripe ${x.verificato ? "mia" : "attesa"}"></div><div class="grow">
+      <div class="t">${esc(x.titolo)}</div>
+      <div class="meta">${esc(x.autore_istituzione)}${x.data ? " · " + esc(x.data) : ""} · <span class="chip">${esc(x.tipo)}</span></div>
+      <div>${esc(x.principio)}</div>
+      ${x.perche_scelta ? `<div class="meta">Perché: ${esc(x.perche_scelta)}</div>` : ""}
+      ${x.limite ? `<div class="meta">Limite: ${esc(x.limite)}</div>` : ""}
+      ${x.verificato ? `<div class="meta"><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.url)}</a></div>` : `<div class="meta"><span class="chip err">Indirizzo non confermato dalla ricerca</span>${x.url_non_verificato ? " " + esc(x.url_non_verificato) : ""}</div>`}
+      <div class="row"><button class="small" data-salva-fonte="${i}" ${x.verificato ? "" : "disabled"}>Salva in biblioteca</button></div></div></div>`).join("") : `<div class="empty">Nessuna fonte utile trovata. Prova con termini diversi.</div>`}
+    ${Array.isArray(r.trovate) && r.trovate.length ? `<details class="flat"><summary class="tiny">Pagine viste dalla ricerca (${r.trovate.length})</summary><div class="inner">${r.trovate.map(t => `<div class="tiny"><a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.titolo || t.url)}</a>${t.data ? " · " + esc(t.data) : ""}</div>`).join("")}</div></details>` : ""}
+    <p class="tiny">Le fonti servono a pensare, non certificano soluzioni tecniche o commerciali. Prima di citarle controlla contenuto e disponibilità.</p></div>`;
+  $$("[data-salva-fonte]", out).forEach(b => b.addEventListener("click", async () => {
+    const x = ris[Number(b.dataset.salvaFonte)]; if (!x || !x.verificato) return;
+    const l = { id: uid(), titolo: x.titolo, testo: `${x.titolo}\n${x.autore_istituzione}\n${x.url}\nData della pagina: ${x.data || "non indicata"}\nTipo: ${x.tipo}\n\nPrincipio: ${x.principio}\n\nLimite: ${x.limite}\n\nTrovata con la ricerca «${q}» il ${today()}; verificata solo come pagina pubblica, da rileggere prima di una citazione operativa.`, fonte: `${x.autore_istituzione} · ${x.url} · verificata il ${today()}`, tipo: "testo", asset_id: "", principi: [{ testo: x.principio, riferimento: x.tipo + (x.data ? " · " + x.data : "") }].concat(x.limite ? [{ testo: "LIMITE: " + x.limite, riferimento: "limite" }] : []), correzioni: [], istruzioni_sospette: false, creato: nowIso(), categoria: "fonte pubblica (ricerca web)", url: x.url, verificato: today(), argomento_origine: a ? a.id : "" };
+    await save("lezioni", l.id, l, { label: "Fonte salvata" }); b.disabled = true; b.textContent = "Salvata in biblioteca"; toast("Fonte salvata: il Coach la userà", true);
+  }));
+}
+
 // ---------- LEZIONI ----------
 function renderLezioni() {
   const lez = Array.from(S.lezioni.values()).sort((a, b) => (b.creato || "").localeCompare(a.creato || ""));
@@ -962,11 +1092,11 @@ function renderLezioni() {
   const form = (b) => $("[data-lform]", b.closest("details[data-lez]"));
   $$("[data-lorig]", el).forEach(b => b.addEventListener("click", () => { const inp = $(`[data-lorigf="${b.dataset.lorig}"]`, el); if (inp) inp.click(); }));
   $$("[data-lorigf]", el).forEach(inp => inp.addEventListener("change", async () => { const file = inp.files[0]; inp.value = ""; if (!file || !S.assets) return; const l = clone(S.lezioni.get(inp.dataset.lorigf)); if (!l) return; try { toast("Carico l'originale…"); const up = await S.assets.upload(file); l.asset_id = up.id; l.tipo = file.type === "application/pdf" ? "pdf" : "foto"; l.originale = file.name; l.versioni = (l.versioni || []).concat([{ quando: nowIso(), cosa: "Originale collegato: " + file.name }]); await save("lezioni", l.id, l, { label: "Originale collegato" }); toast("Originale collegato alla lezione", true); } catch (e) { toast("Originale non caricato (" + (e && e.code || "errore") + ")"); } }));
-  $$("[data-corr]", el).forEach(b => b.addEventListener("click", () => { const [id, i] = b.dataset.corr.split(":"); const l = clone(S.lezioni.get(id)); const f = form(b); f.innerHTML = `<div class="inline-edit"><label>Correzione al principio</label><input type="text" id="lc-txt"><div class="row"><button class="primary small" id="lc-ok">Salva e aggiorna</button></div></div>`; $("#lc-ok").addEventListener("click", async () => { const t = $("#lc-txt").value.trim(); if (!t) return; l.principi[Number(i)].correzione = t; l.correzioni = (l.correzioni || []).concat([{ quando: nowIso(), testo: "Principio " + (Number(i) + 1) + ": " + t }]); await save("lezioni", l.id, l, { label: "Correzione lezione" }); await segnaAnalisiDipendenti(); toast("Correzione salvata: il Coach ne terrà conto", true); }); }));
-  $$("[data-lcorr]", el).forEach(b => b.addEventListener("click", () => { const l = clone(S.lezioni.get(b.dataset.lcorr)); const f = form(b); f.innerHTML = `<div class="inline-edit"><label>Correzione generale</label><input type="text" id="lg-txt"><div class="row"><button class="primary small" id="lg-ok">Salva e aggiorna</button></div></div>`; $("#lg-ok").addEventListener("click", async () => { const t = $("#lg-txt").value.trim(); if (!t) return; l.correzioni = (l.correzioni || []).concat([{ quando: nowIso(), testo: t }]); await save("lezioni", l.id, l, { label: "Correzione lezione" }); await segnaAnalisiDipendenti(); toast("Correzione salvata", true); }); }));
+  $$("[data-corr]", el).forEach(b => b.addEventListener("click", () => { const [id, i] = b.dataset.corr.split(":"); const l = clone(S.lezioni.get(id)); const f = form(b); f.innerHTML = `<div class="inline-edit"><label>Correzione al principio</label><input type="text" id="lc-txt"><div class="row"><button class="primary small" id="lc-ok">Salva e aggiorna</button></div></div>`; $("#lc-ok").addEventListener("click", async () => { const t = $("#lc-txt").value.trim(); if (!t) return; l.principi[Number(i)].correzione = t; l.correzioni = (l.correzioni || []).concat([{ quando: nowIso(), testo: "Principio " + (Number(i) + 1) + ": " + t }]); await save("lezioni", l.id, l, { label: "Correzione lezione" }); await segnaAnalisiDipendenti(l.id); toast("Correzione salvata: il Coach ne terrà conto", true); }); }));
+  $$("[data-lcorr]", el).forEach(b => b.addEventListener("click", () => { const l = clone(S.lezioni.get(b.dataset.lcorr)); const f = form(b); f.innerHTML = `<div class="inline-edit"><label>Correzione generale</label><input type="text" id="lg-txt"><div class="row"><button class="primary small" id="lg-ok">Salva e aggiorna</button></div></div>`; $("#lg-ok").addEventListener("click", async () => { const t = $("#lg-txt").value.trim(); if (!t) return; l.correzioni = (l.correzioni || []).concat([{ quando: nowIso(), testo: t }]); await save("lezioni", l.id, l, { label: "Correzione lezione" }); await segnaAnalisiDipendenti(l.id); toast("Correzione salvata", true); }); }));
   $$("[data-ldel]", el).forEach(b => b.addEventListener("click", () => { const l = S.lezioni.get(b.dataset.ldel); const f = form(b); f.innerHTML = `<div class="banner err">Eliminare «${esc(l.titolo)}» e il suo originale? <div class="row"><button class="small" id="ld-ok">Sì, elimina</button><button class="small quiet" id="ld-no">No</button></div></div>`; $("#ld-no").addEventListener("click", renderLezioni); $("#ld-ok").addEventListener("click", async () => { if (l.asset_id && S.assets) { try { await S.assets.delete(l.asset_id); } catch (e) {} } await del("lezioni", l.id); }); }));
 }
-async function segnaAnalisiDipendenti() { S.gen = (S.gen || 0) + 1; for (const a of Array.from(S.argomenti.values())) { if (a.ultimo_coach && !a.ultimo_coach.da_aggiornare) { const na = clone(a); na.ultimo_coach.da_aggiornare = true; await save("argomenti", a.id, na, { silent: true, noUndo: true, noRender: true }); } } if (S.coachOut) { S.coachOut = null; } renderAll(); }
+async function segnaAnalisiDipendenti(lezioneId) { S.gen = (S.gen || 0) + 1; if (lezioneId) await segnaRicercheDipendenti("lezione", lezioneId); for (const a of Array.from(S.argomenti.values())) { if (a.ultimo_coach && !a.ultimo_coach.da_aggiornare) { const na = clone(a); na.ultimo_coach.da_aggiornare = true; await save("argomenti", a.id, na, { silent: true, noUndo: true, noRender: true }); } } if (S.coachOut) { S.coachOut = null; } renderAll(); }
 async function estraiTestoPDF(file) {
   if (!window.pdfjsLib) throw new Error("pdfjs");
   pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
@@ -1012,18 +1142,18 @@ function bindNotaActions(root) {
     mk("Correggi", () => { acts.innerHTML = `<div class="inline-edit"><label>Aggiunta o correzione (es. «Mi ero dimenticato che…»)</label><input type="text" id="nc-${n.id}"><div class="row"><button class="primary small" id="nco-${n.id}">Salva e aggiorna</button><button class="small quiet" id="ncs-${n.id}">Salva solo</button><button class="small quiet" id="nca-${n.id}">Annulla</button></div></div>`;
       $("#nca-" + n.id).addEventListener("click", renderAll);
       const salva = async () => { const t = $("#nc-" + n.id).value.trim(); if (!t) return null; const nn = clone(n); nn.correzioni = (nn.correzioni || []).concat([{ quando: nowIso(), testo: t }]); await save("note", n.id, nn, { label: "Correzione nota" }); return { nn, t }; };
-      $("#ncs-" + n.id).addEventListener("click", async () => { if (await salva()) toast("Correzione salvata", true); });
+      $("#ncs-" + n.id).addEventListener("click", async () => { if (await salva()) { await segnaRicercheDipendenti("nota", n.id); renderAll(); toast("Correzione salvata", true); } });
       $("#nco-" + n.id).addEventListener("click", async () => { const r = await salva(); if (r) await aggiornaDopoCorrezione(r.nn, r.t); });
     });
     mk("Modifica", () => { acts.innerHTML = `<div class="inline-edit"><label>Testo (l'originale resta nelle versioni)</label><textarea id="ne-${n.id}">${esc(n.testo_originale)}</textarea><label for="nd-${n.id}">Data della nota</label><input type="date" id="nd-${n.id}" value="${esc(n.data_nota)}" style="width:auto"><div class="row"><button class="primary small" id="neo-${n.id}">Salva modifica</button><button class="small quiet" id="nea-${n.id}">Annulla</button></div></div>`;
       $("#nea-" + n.id).addEventListener("click", renderAll);
-      $("#neo-" + n.id).addEventListener("click", async () => { const t = $("#ne-" + n.id).value.trim(); const d = $("#nd-" + n.id).value || n.data_nota; if (!t) return; const nn = clone(n); nn.versioni_testo = (nn.versioni_testo || []).concat([{ quando: nowIso(), testo: n.testo_originale, data_nota: n.data_nota }]); nn.testo_originale = t; nn.data_nota = d; await save("note", n.id, nn, { label: "Modifica nota" }); toast("Modifica salvata, originale conservato", true); });
+      $("#neo-" + n.id).addEventListener("click", async () => { const t = $("#ne-" + n.id).value.trim(); const d = $("#nd-" + n.id).value || n.data_nota; if (!t) return; const nn = clone(n); nn.versioni_testo = (nn.versioni_testo || []).concat([{ quando: nowIso(), testo: n.testo_originale, data_nota: n.data_nota }]); nn.testo_originale = t; nn.data_nota = d; await save("note", n.id, nn, { label: "Modifica nota" }); await segnaRicercheDipendenti("nota", n.id); renderAll(); toast("Modifica salvata, originale conservato", true); });
     });
     if (n.analisi_stato === "da_aggiornare" && S.sample) mk("Rifai l'analisi", () => { showView("piano"); analizzaNota(n); });
     mk("Copia", () => copyText(n.testo_originale + ((n.correzioni || []).length ? "\n\nCorrezioni: " + n.correzioni.map(c => c.testo).join(" | ") : "")));
   });
 }
-async function aggiornaDopoCorrezione(n, corr) { S.gen = (S.gen || 0) + 1;
+async function aggiornaDopoCorrezione(n, corr) { S.gen = (S.gen || 0) + 1; await segnaRicercheDipendenti("nota", n.id);
   if (!S.sample) { toast("Analisi non disponibile qui: correzione salvata"); return; }
   toast("Aggiorno i dati collegati…");
   const argIds = n.argomento_ids || []; const imps = Array.from(S.impegni.values()).filter(i => (argIds.includes(i.argomento_id) || i.origine_nota_id === n.id) && i.stato === "aperto");
