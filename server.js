@@ -123,10 +123,10 @@ async function coach(body) {
   else if (Array.isArray(input)) messages = input.filter(m => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string" && m.content).map(m => ({ role: m.role, content: m.content }));
   if (!messages.length) return { error: "invalid_request" };
   if (images.length) { const last = messages[messages.length - 1]; last.content = images.map(im => ({ type: "image", source: { type: "base64", media_type: im.media_type, data: im.data } })).concat([{ type: "text", text: typeof last.content === "string" ? last.content : "" }]); }
-  const system = "Sei il Coach privato di Luigi Orizio dentro la sua app personale. Rispondi in italiano. " + (wantJson ? "Rispondi SOLO con un valore JSON valido, senza testo prima o dopo e senza blocchi di codice." : "");
+  const system = "Sei il Coach privato di Luigi Orizio dentro la sua app personale. Rispondi in italiano. " + (wantJson ? "Rispondi SOLO con un oggetto JSON valido, senza testo prima o dopo e senza blocchi di codice. Dentro le stringhe usa \\n per andare a capo (mai a capo reali), niente virgole finali, niente commenti. Frasi brevi." : "");
   const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 170000);
   try {
-    const r = await fetch(ANTHROPIC_BASE_URL + "/v1/messages", { method: "POST", signal: ctl.signal, headers: Object.assign({ "content-type": "application/json", "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" }, ANTHROPIC_WORKSPACE_ID ? { "anthropic-workspace-id": ANTHROPIC_WORKSPACE_ID } : {}), body: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: 4000, system, messages }) });
+    const r = await fetch(ANTHROPIC_BASE_URL + "/v1/messages", { method: "POST", signal: ctl.signal, headers: Object.assign({ "content-type": "application/json", "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" }, ANTHROPIC_WORKSPACE_ID ? { "anthropic-workspace-id": ANTHROPIC_WORKSPACE_ID } : {}), body: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: 8000, system, messages }) });
     const txt = await r.text();
     if (!r.ok) { console.error("anthropic", r.status, txt.slice(0, 300)); return { error: r.status === 429 ? "rate_limited" : r.status === 401 || r.status === 403 ? "not_configured" : "upstream_error", status: r.status }; }
     const data = JSON.parse(txt); const text = (data.content || []).filter(c => c.type === "text").map(c => c.text).join("\n").trim();
@@ -137,7 +137,18 @@ async function coach(body) {
   } catch (e) { return { error: e.name === "AbortError" ? "upstream_error" : "upstream_error", message: String(e.message || e) }; }
   finally { clearTimeout(timer); }
 }
-function parseJsonLenient(t) { try { return JSON.parse(t); } catch (e) {} const m = t.match(/```(?:json)?\s*([\s\S]*?)```/); if (m) { try { return JSON.parse(m[1]); } catch (e) {} } const a = t.search(/[\[{]/); const b = Math.max(t.lastIndexOf("}"), t.lastIndexOf("]")); if (a >= 0 && b > a) { try { return JSON.parse(t.slice(a, b + 1)); } catch (e) {} } return undefined; }
+function ripara(s) { // a capo e tabulazioni dentro le stringhe → \\n; virgole finali tolte
+  let out = "", inStr = false, esc = false;
+  for (const ch of s) { if (inStr) { if (esc) { out += ch; esc = false; } else if (ch === "\\") { out += ch; esc = true; } else if (ch === '"') { out += ch; inStr = false; } else if (ch === "\n") out += "\\n"; else if (ch === "\r") {} else if (ch === "\t") out += "\\t"; else out += ch; } else { if (ch === '"') inStr = true; out += ch; } }
+  return out.replace(/,\s*([}\]])/g, "$1");
+}
+function parseJsonLenient(t) {
+  const tries = [];
+  tries.push(t); const m = t.match(/```(?:json)?\s*([\s\S]*?)```/); if (m) tries.push(m[1]);
+  const a = t.search(/[\[{]/); const b = Math.max(t.lastIndexOf("}"), t.lastIndexOf("]")); if (a >= 0 && b > a) tries.push(t.slice(a, b + 1));
+  for (const c of tries) { try { return JSON.parse(c); } catch (e) {} try { return JSON.parse(ripara(c)); } catch (e) {} }
+  return undefined;
+}
 
 // ---------- routing ----------
 const server = http.createServer(async (req, res) => {
