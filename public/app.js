@@ -921,6 +921,7 @@ function bindNotaActions(root) {
       $("#neo-" + n.id).addEventListener("click", async () => { const t = $("#ne-" + n.id).value.trim(); const d = $("#nd-" + n.id).value || n.data_nota; if (!t) return; const nn = clone(n); nn.versioni_testo = (nn.versioni_testo || []).concat([{ quando: nowIso(), testo: n.testo_originale, data_nota: n.data_nota }]); nn.testo_originale = t; nn.data_nota = d; await save("note", n.id, nn, { label: "Modifica nota" }); await segnaRicercheDipendenti("nota", n.id); renderAll(); toast("Modifica salvata, originale conservato", true); });
     });
     if (n.analisi_stato === "da_aggiornare" && S.sample) mk("Rifai l'analisi", () => { showView("piano"); analizzaNota(n); });
+    if (n.analisi_stato === "nessuna" && n.tipo === "nota" && S.sample) mk("Analizza", () => { showView("piano"); analizzaNota(n); });
     mk("Copia", () => copyText(n.testo_originale + ((n.correzioni || []).length ? "\n\nCorrezioni: " + n.correzioni.map(c => c.testo).join(" | ") : "")));
   });
 }
