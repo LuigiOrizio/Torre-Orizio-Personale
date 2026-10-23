@@ -244,7 +244,7 @@ Ultima novità: ${(arg.ultima_novita && arg.ultima_novita.testo) || "—"} (${(a
 Impegni: ${JSON.stringify(impegni.map(i => ({ id: i.id, cosa: i.titolo, tipo: i.tipo, da_chi: i.da_chi, data: i.data, stato: i.stato, esito: i.esito })))}
 Note collegate (id, data, testo, correzioni):
 <materiale>
-${note.map(n => `[${n.id} · ${n.data_nota}${n.tipo !== "nota" ? " · " + n.tipo : ""}] ${String(n.testo_originale || "").slice(0, 1200)}${(n.correzioni || []).length ? " — correzioni di Luigi (prevalgono): " + n.correzioni.map(c => c.testo).join(" | ") : ""}`).join("\n") || "nessuna"}
+${note.map(n => { const parte = Array.isArray(n.parti) ? n.parti.find(p => p.argomento_id === argId && p.testo) : null; return `[${n.id} · ${n.data_nota}${n.tipo !== "nota" ? " · " + n.tipo : ""}${parte ? " · parte della nota che riguarda questo argomento" : ""}] ${String(parte ? parte.testo : n.testo_originale || "").slice(0, 1200)}${(n.correzioni || []).length ? " — correzioni di Luigi (prevalgono): " + n.correzioni.map(c => c.testo).join(" | ") : ""}`; }).join("\n") || "nessuna"}
 </materiale>
 Lezioni e fonti in biblioteca (id · titolo · fonte; principi con riferimento; correzioni di Luigi prevalgono):
 <materiale>
@@ -302,6 +302,25 @@ ${lezioni.map(l => `## ${l.id} · ${l.titolo}${l.fonte ? " (" + String(l.fonte).
   return ric;
 }
 
+// ---------- dipendenze: una nota o lezione cambiata segna «da aggiornare» ciò che l'ha usata ----------
+function contenutoCambiato(coll, prev, next) {
+  if (!prev) return false;
+  if (coll === "note") return prev.testo_originale !== next.testo_originale || (prev.correzioni || []).length !== (next.correzioni || []).length;
+  if (coll === "lezioni") return JSON.stringify(prev.principi || []) !== JSON.stringify(next.principi || []) || (prev.correzioni || []).length !== (next.correzioni || []).length || prev.testo !== next.testo;
+  return false;
+}
+function segnaDipendentiServer(coll, id) {
+  const quando = new Date().toISOString(); let n = 0;
+  for (const [k, v] of Object.entries(db.docs)) {
+    if (v.deleted || !k.startsWith("argomenti/")) continue; const a = v.data; let cambia = false; const na = Object.assign({}, a);
+    if (Array.isArray(a.ricerche)) na.ricerche = a.ricerche.map(r => { const usa = r.usa || {}; const dip = coll === "note" ? (usa.note || []).some(x => x.id === id) : (usa.lezioni || []).some(x => x.id === id); if (dip && r.stato_analisi !== "da_aggiornare") { cambia = true; return Object.assign({}, r, { stato_analisi: "da_aggiornare", da_aggiornare_per: (coll === "note" ? "nota " : "lezione ") + id + " corretta il " + quando }); } return r; });
+    const usaCoach = coll === "note" ? (a.argomento_ids_note || []).includes(id) || (() => { const nd = db.docs["note/" + id]; return !!(nd && !nd.deleted && (nd.data.argomento_ids || []).includes(k.slice(10))); })() : true;
+    if (a.ultimo_coach && !a.ultimo_coach.da_aggiornare && usaCoach) { na.ultimo_coach = Object.assign({}, a.ultimo_coach, { da_aggiornare: true }); cambia = true; }
+    if (cambia) { putDoc("argomenti", k.slice(10), na); n++; }
+  }
+  return n;
+}
+
 // ---------- routing ----------
 const server = http.createServer(async (req, res) => {
   securityHeaders(res);
@@ -334,11 +353,13 @@ const server = http.createServer(async (req, res) => {
         let body; try { body = JSON.parse((await readBody(req, MAX_DOC_BYTES + 1024)).toString("utf8")); } catch (e) { return json(res, e.message === "too_large" ? 413 : 400, { error: e.message === "too_large" ? "too_large" : "invalid_argument" }); }
         if (!body || typeof body.data !== "object" || body.data === null || Array.isArray(body.data)) return json(res, 400, { error: "invalid_argument" });
         // `base` = versione (seq) che il client ha letto; 0 per un documento nuovo. Senza `base` (o con force) si sovrascrive esplicitamente.
-        if (body.force === true || body.base === undefined) { const seq = putDoc(coll, id, body.data); return json(res, 200, { ok: true, seq, forced: body.force === true }); }
+        const prevDoc = db.docs[key]; const prevData = prevDoc && !prevDoc.deleted ? prevDoc.data : null; const cambiato = (coll === "note" || coll === "lezioni") && contenutoCambiato(coll, prevData, body.data);
+        if (body.force === true || body.base === undefined) { const seq = putDoc(coll, id, body.data); const dip = cambiato ? segnaDipendentiServer(coll, id) : 0; return json(res, 200, { ok: true, seq, forced: body.force === true, dipendenti_segnati: dip }); }
         const base = Number(body.base); if (!Number.isInteger(base) || base < 0) return json(res, 400, { error: "invalid_argument" });
         const r = putDocIfVersion(coll, id, body.data, base);
         if (r.conflict) return json(res, 409, { error: "conflict", current: r.current });
-        return json(res, 200, { ok: true, seq: r.seq });
+        const dip = cambiato ? segnaDipendentiServer(coll, id) : 0;
+        return json(res, 200, { ok: true, seq: r.seq, dipendenti_segnati: dip });
       }
       if (req.method === "DELETE") { const seq = delDoc(coll, id); return json(res, 200, { ok: true, seq }); }
     }
