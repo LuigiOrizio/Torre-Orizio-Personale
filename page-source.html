@@ -411,7 +411,8 @@ function renderAll() { renderPiano(); renderCoachElenco(); renderCoachScheda(); 
 // un modulo è «aperto» se c'è un campo con il fuoco, oppure se dentro il contenitore c'è un modulo in linea usato negli ultimi 20 secondi (testo scritto o frasi toccate)
 function moduloAperto(root) { if (!root) return false; const ae = document.activeElement; if (ae && root.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) && ae.id !== "storia-cerca" && ae.id !== "coach-cerca") return true; return Date.now() - (S.ultimoInput || 0) < 20000 && !!$(".inline-edit, [data-sit-form] textarea", root); }
 document.addEventListener("input", e => { const t = e.target; if (t && t.closest && t.closest(".inline-edit, [data-sit-form]")) S.ultimoInput = Date.now(); });
-document.addEventListener("click", e => { const b = e.target && e.target.closest && e.target.closest("button"); if (b && b.closest(".inline-edit, [data-sit-form]")) { const firma = Array.from(b.attributes).map(x => x.name === "id" ? x.value : x.name).join(" "); S.ultimoInput = /(^|\s)(data-ok|data-an|data-crea|data-sposta|data-und|data-chiudi|ok-\S*|an-\S*|nco-\S*|ncs-\S*|nca-\S*|neo-\S*|nea-\S*|nlo-\S*|nla-\S*|prop-ok|prop-no|org-undo|org-chiudi)(\s|$)/.test(firma) ? 0 : Date.now(); } }, true);
+// un clic su un pulsante di un modulo chiude la «protezione» (Annulla, Salva, …), tranne i pulsanti che fanno parte della compilazione (le frasi da scegliere)
+document.addEventListener("click", e => { const b = e.target && e.target.closest && e.target.closest("button"); if (b && b.closest(".inline-edit, [data-sit-form]")) S.ultimoInput = b.hasAttribute("data-f") ? Date.now() : 0; }, true);
 
 // ---------- modello ----------
 const argAperti = () => Array.from(S.argomenti.values()).filter(a => a.stato !== "archiviato").sort((a, b) => (b.aggiornato || "").localeCompare(a.aggiornato || ""));
@@ -1606,7 +1607,7 @@ async function annullaDivisione(n) {
 function mostraRisultatoDivisione(res, host) {
   const box = host || $("#storia-strumenti"); if (!box || !res) return; let el = $("#dividi-risultato"); if (!el) { el = document.createElement("div"); el.id = "dividi-risultato"; box.appendChild(el); }
   el.dataset.nota = res.n.id;
-  el.innerHTML = `<div class="card" style="border-color:var(--ok);margin:10px 0"><div class="row between"><div class="eyebrow">Divisa in ${res.titoli.length} situazioni</div><div class="row"><button class="small" data-und>Annulla</button><button class="small quiet" data-chiudi>Chiudi</button></div></div>
+  el.innerHTML = `<div class="card" style="border-color:var(--ok);margin:10px 0"><div class="row between"><div class="eyebrow">Divisa in ${res.titoli.length} ${res.titoli.length === 1 ? "situazione" : "situazioni"}</div><div class="row"><button class="small" data-und>Annulla</button><button class="small quiet" data-chiudi>Chiudi</button></div></div>
     ${res.parti.map(p => `<div><b>${esc(p.argomento_id ? argTitolo(p.argomento_id) : p.proposta ? (p.proposta.titolo || "?") + " — da decidere" : "Senza argomento (frasi non attribuite)")}</b><div class="muted" style="white-space:pre-wrap">${esc(p.testo)}</div></div>`).join("")}
     ${res.identita.length ? `<div class="banner" style="padding:6px 10px"><b>Identità incerte, non unite:</b> ${res.identita.map(esc).join(" · ")}</div>` : ""}
     <div class="tiny">${res.perse.length ? res.perse.length + " frasi non attribuite conservate come «Senza argomento»." : "Nessuna frase persa: ogni passaggio dell'originale è in una situazione."} L'originale completo resta intero («Nota intera»).</div></div>`;
