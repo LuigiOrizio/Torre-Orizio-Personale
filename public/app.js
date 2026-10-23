@@ -445,7 +445,7 @@ ${n.testo_originale.slice(0, 6000)}${(n.correzioni || []).length ? "\nCorrezioni
 
 Estrai in JSON, senza altro testo:
 {"sintesi":"una frase su cosa è successo",
- "argomenti":[{"id":"id esistente o null","titolo":"titolo breve","ambito":"progetti|italia|estero|altro","situazione":"situazione attuale in una frase, solo da quanto scritto","cosa_cambia":"cosa cambia rispetto a prima, in una frase","seguito_da":"chi segue il passaggio attuale, o vuoto","posso_aspettare":"se Luigi può aspettare, fino a quale evento o data; altrimenti vuoto"}],
+ "argomenti":[{"id":"id esistente o null","titolo":"titolo breve","ambito":"progetti|italia|estero|altro","situazione":"situazione attuale in una frase, solo da quanto scritto","cosa_cambia":"cosa cambia rispetto a prima, in una frase","seguito_da":"chi segue il passaggio attuale, o vuoto","posso_aspettare":"se Luigi può aspettare, fino a quale evento o data; altrimenti vuoto","estratto":"le frasi della nota che riguardano QUESTO argomento, copiate testualmente senza correggerle (più frammenti separati da ' … '); ogni frase della nota va in almeno un argomento"}],
  "impegni":[{"argomento":0,"titolo":"cosa, concreto","tipo":"mia|attesa|altri","da_chi":"persona (per attesa/altri), o vuoto","data":"YYYY-MM-DD o null","data_da_chiarire":false}],
  "eventi":[{"titolo":"incontro, visita o trasferta","data":"YYYY-MM-DD","ora":"HH:MM o vuoto","modalita":"ufficio|clienti|trasferta","argomento":0}],
  "contraddizioni":["solo se la nota contraddice la situazione nota di un argomento"],
@@ -483,7 +483,9 @@ function mostraProposte(n, r) {
     }
     for (let i = 0; i < imps.length; i++) { if (!$(`[data-pi="${i}"]`).checked) continue; const im = imps[i]; const ni = { id: uid(), titolo: im.titolo || "", tipo: ["mia", "attesa", "altri"].includes(im.tipo) ? im.tipo : "mia", da_chi: im.da_chi || "", data: im.data || "", data_da_chiarire: !!im.data_da_chiarire, argomento_id: argIds[im.argomento] || "", stato: "aperto", creato: nowIso(), origine_nota_id: n.id, versioni: [] }; await save("impegni", ni.id, ni, { label: "Nuovo impegno" }); }
     for (let i = 0; i < evs.length; i++) { if (!$(`[data-pe="${i}"]`).checked) continue; const ev = evs[i]; if (!ev.data) continue; const ne = { id: uid(), titolo: ev.titolo || "", data: ev.data, ora: ev.ora || "", ora_fine: "", modalita: ["ufficio", "clienti", "trasferta"].includes(ev.modalita) ? ev.modalita : "ufficio", argomento_id: argIds[ev.argomento] || "", obiettivo: "", stimato: !ev.ora, creato: nowIso(), origine_nota_id: n.id }; await save("eventi", ne.id, ne, { label: "Nuovo impegno fisso" }); }
-    const nn = clone(S.note.get(n.id) || n); nn.argomento_ids = argIds.filter(Boolean); nn.analisi = r.sintesi || ""; nn.analisi_stato = "ok"; await save("note", n.id, nn, { silent: true, noUndo: true });
+    const nn = clone(S.note.get(n.id) || n); nn.argomento_ids = Array.from(new Set((nn.argomento_ids || []).concat(argIds.filter(Boolean)))); nn.analisi = r.sintesi || ""; nn.analisi_stato = "ok";
+    const parti = args.map((a, i) => argIds[i] && a.estratto ? { argomento_id: argIds[i], testo: String(a.estratto).slice(0, 4000) } : null).filter(Boolean); if (parti.length) nn.parti = parti;
+    await save("note", n.id, nn, { silent: true, noUndo: true });
     box.hidden = true; $("#nota-stato").textContent = "Salvato. Trovi tutto in Piano e nella Storia."; toast("Proposte salvate");
   });
 }
@@ -491,7 +493,7 @@ function mostraProposte(n, r) {
 // ---------- COACH ----------
 function renderCoachElenco() {
   const q = ($("#coach-cerca").value || "").toLowerCase().trim();
-  const list = argAperti().filter(a => !q || (a.titolo + " " + (a.situazione || "")).toLowerCase().includes(q));
+  const list = argAperti().filter(a => matchQ(a.titolo + " " + (a.situazione || ""), q));
   const el = $("#coach-elenco");
   el.innerHTML = list.length ? list.slice(0, q ? 50 : 8).map(a => `<button class="item" style="text-align:left;width:100%" data-arg="${a.id}"><div class="stripe ${a.id === S.coachArg ? "mia" : "altri"}"></div><div class="grow"><div class="t">${esc(a.titolo)}</div><div class="meta">${esc(AMBITI[a.ambito] || "")}${a.ultima_novita && a.ultima_novita.testo ? " · " + esc(a.ultima_novita.testo.slice(0, 80)) : ""}</div></div></button>`).join("") : `<div class="empty">Nessun argomento aperto. Scrivi una nota in Piano e analizzala.</div>`;
   $$("[data-arg]", el).forEach(b => b.addEventListener("click", () => { S.coachArg = b.dataset.arg; S.coachOut = null; renderCoachElenco(); renderCoachScheda(); }));
@@ -516,7 +518,7 @@ function renderCoachScheda() {
       <div class="muted">${a.seguito_da ? "Segue il passaggio: " + esc(a.seguito_da) + " · " : ""}${a.ultimo_riscontro ? "ultimo riscontro " + fmtDate(a.ultimo_riscontro) : "nessun riscontro datato"}</div>
       ${aperti.length ? `<div class="eyebrow">Impegni aperti</div><div class="list">${aperti.map(impegnoHTML).join("")}</div>` : `<p class="muted">Nessun impegno aperto.</p>`}
       ${fatti.length ? `<div class="eyebrow">Esiti recenti</div>${fatti.map(impegnoHTML).join("")}` : ""}
-      <div class="eyebrow">Note collegate (${note.length})</div>${note.length ? note.slice(0, 10).map(notaHTML).join("") : '<p class="muted">Nessuna nota collegata.</p>'}
+      <div class="eyebrow">Note collegate (${note.length})</div>${note.length ? note.slice(0, 10).map(n => notaHTML(n, a.id)).join("") : '<p class="muted">Nessuna nota collegata.</p>'}
       ${(a.ricerche || []).length ? `<div class="eyebrow">Verifiche online salvate</div><div class="list">${a.ricerche.slice().reverse().map(r => `<div class="item"><div class="stripe ${r.stato_analisi === "da_aggiornare" ? "attesa" : "mia"}"></div><div class="grow"><div class="t">${esc(r.domanda)}</div><div class="meta">${fmtTs(r.quando)} · ricerca ${esc(r.stato)}${r.stato_analisi === "da_aggiornare" ? ' · <span class="chip err">Da aggiornare</span>' : ""} · ${(r.evidenze || []).length} fonti</div><div class="row"><button class="small quiet" data-ric-apri="${r.id}">Apri</button><button class="small quiet" data-ric-agg="${r.id}">Aggiorna ricerca</button></div></div></div>`).join("")}</div>` : ""}
       ${(a.versioni || []).length ? `<div class="eyebrow">Versioni della situazione</div><div class="versions">${a.versioni.slice().reverse().map(v => `<div>${fmtTs(v.quando)} · ${esc(v.cosa)}</div>`).join("")}</div>` : ""}
     </div></details></div>`;
@@ -570,7 +572,7 @@ Chi segue il passaggio: ${a.seguito_da || "non indicato"}. Ultimo riscontro: ${a
 Impegni (aperti e chiusi): ${JSON.stringify(imps.map(i => ({ id: i.id, cosa: i.titolo, tipo: i.tipo, da_chi: i.da_chi, data: i.data, stato: i.stato, esito: i.esito })))}
 Note recenti di Luigi (dalla più recente), con data:
 <materiale>
-${note.map(n => `[${n.data_nota}${n.tipo !== "nota" ? " · " + n.tipo : ""}] ${n.testo_originale.slice(0, 900)}${(n.correzioni || []).length ? " — correzioni: " + n.correzioni.map(c => c.testo).join(" | ") : ""}`).join("\n") || "nessuna"}
+${note.map(n => { const parte = Array.isArray(n.parti) ? n.parti.find(p => p.argomento_id === a.id && p.testo) : null; return `[${n.data_nota}${n.tipo !== "nota" ? " · " + n.tipo : ""}${parte ? " · parte che riguarda questo argomento" : ""}] ${String(parte ? parte.testo : n.testo_originale).slice(0, 900)}${(n.correzioni || []).length ? " — correzioni: " + n.correzioni.map(c => c.testo).join(" | ") : ""}`; }).join("\n") || "nessuna"}
 </materiale>
 
 ${lezioniContesto()}
@@ -894,12 +896,51 @@ async function salvaLezione() {
   } catch (e) { st.textContent = "Non salvata: " + (e && e.code || e && e.message || "errore"); }
 }
 
+// ---------- STORIA: divisione in blocco delle note lunghe non analizzate ----------
+function noteDaDividere() { return Array.from(S.note.values()).filter(n => n.tipo === "nota" && n.analisi_stato === "nessuna" && !(Array.isArray(n.parti) && n.parti.length) && String(n.testo_originale || "").length > 250); }
+function renderStoriaStrumenti() {
+  let box = $("#storia-strumenti"); const el = $("#storia-elenco"); if (!el) return;
+  if (!box) { box = document.createElement("div"); box.id = "storia-strumenti"; el.parentNode.insertBefore(box, el); }
+  const n = noteDaDividere().length;
+  box.innerHTML = n && S.sample ? `<div class="row" style="margin-bottom:10px"><button class="small" id="btn-dividi">Dividi per argomento le note non analizzate (${n})</button><span class="tiny">Collega le parti solo ad argomenti già esistenti; l'originale resta intero.</span></div><div id="dividi-stato" class="tiny"></div>` : "";
+  const b = $("#btn-dividi"); if (b) b.addEventListener("click", dividiNoteInBlocco);
+}
+async function dividiNota(n) {
+  const esistenti = Array.from(S.argomenti.values()).filter(a => a.stato !== "archiviato").map(a => ({ id: a.id, titolo: a.titolo, situazione: (a.situazione || "").slice(0, 120) }));
+  const prompt = `${contestoBase()}
+
+Argomenti esistenti (usa SOLO questi id; non proporre argomenti nuovi, impegni o date):
+${JSON.stringify(esistenti)}
+
+<materiale>
+${String(n.testo_originale || "").slice(0, 8000)}
+</materiale>
+
+Dividi la nota per argomento: per ogni argomento esistente di cui la nota parla, copia TESTUALMENTE (senza correggere) le frasi che lo riguardano; più frammenti separati da ' … '. Le frasi che non riguardano nessun argomento esistente vanno in "resto". Rispondi solo con JSON:
+{"parti":[{"id":"id argomento esistente","estratto":"frasi copiate"}],"resto":"frasi non attribuite, o vuoto","istruzioni_sospette":false}`;
+  const r = await S.sample.json(prompt, { cache: false });
+  const parti = (Array.isArray(r.parti) ? r.parti : []).filter(p => p && S.argomenti.get(p.id) && p.estratto).map(p => ({ argomento_id: p.id, testo: String(p.estratto).slice(0, 4000) }));
+  const nn = clone(S.note.get(n.id) || n); nn.parti = parti; if (r.resto) nn.parte_resto = String(r.resto).slice(0, 4000);
+  nn.argomento_ids = Array.from(new Set((nn.argomento_ids || []).concat(parti.map(p => p.argomento_id)))); nn.analisi_stato = "ok"; nn.analisi = (nn.analisi ? nn.analisi + " · " : "") + "Divisa per argomento (" + parti.length + " parti) il " + today() + "; nessun impegno creato."; if (r.istruzioni_sospette) nn.istruzioni_sospette = true;
+  await save("note", n.id, nn, { silent: true, noUndo: true, noRender: true }); return parti.length;
+}
+async function dividiNoteInBlocco() {
+  const list = noteDaDividere(); const st = $("#dividi-stato"); const b = $("#btn-dividi"); if (b) b.disabled = true; let fatte = 0, parti = 0;
+  for (const n of list) { if (st) st.innerHTML = `<span class="spin"></span> Divido la nota ${fatte + 1} di ${list.length}…`; try { parti += await dividiNota(n); fatte++; } catch (e) { if (st) st.textContent = "Interrotto alla nota " + (fatte + 1) + " (" + (e && e.code || "errore") + "); le note già divise sono salvate."; renderAll(); return; } }
+  renderAll(); toast(`Divise ${fatte} note in ${parti} parti`, true);
+}
+
 // ---------- STORIA ----------
-function notaHTML(n) {
+function notaHTML(n, ctxArg) {
   const args = (n.argomento_ids || []).map(id => argTitolo(id)).filter(Boolean);
   const tipo = { nota: "Nota", esito: "Esito", parlato: "Conversazione", correzione: "Correzione" }[n.tipo] || "Nota";
+  const parti = Array.isArray(n.parti) ? n.parti.filter(p => p && p.testo) : [];
+  const mostra = ctxArg ? parti.filter(p => p.argomento_id === ctxArg) : parti;
+  const corpo = mostra.length
+    ? `<div class="list">${mostra.map(p => `<div class="item" style="padding:8px 10px"><div class="stripe mia"></div><div class="grow"><div class="tiny">${esc(argTitolo(p.argomento_id) || "Argomento")}</div><div style="white-space:pre-wrap">${esc(p.testo)}</div></div></div>`).join("")}</div><details class="flat"><summary class="tiny">Nota intera (originale${ctxArg && parti.length > mostra.length ? ", con le altre parti" : ""})</summary><div class="inner"><div style="white-space:pre-wrap">${esc(n.testo_originale)}</div></div></details>`
+    : `<div style="white-space:pre-wrap">${esc(n.testo_originale)}</div>`;
   return `<div class="item" data-nota="${n.id}"><div class="stripe ${n.tipo === "esito" ? "mia" : "altri"}"></div><div class="grow"><div class="row"><span class="chip">${tipo}</span><span class="tiny">${fmtDate(n.data_nota)}${n.creato ? " · scritta " + fmtTs(n.creato) : ""}</span>${n.analisi_stato === "da_aggiornare" ? '<span class="chip err">Analisi da aggiornare</span>' : ""}${pendingMark(n)}</div>
-    <div style="white-space:pre-wrap">${esc(n.testo_originale)}</div>
+    ${corpo}
     ${args.length ? `<div class="meta">${args.map(esc).join(" · ")}</div>` : ""}
     ${(n.correzioni || []).length ? `<div class="versions">${n.correzioni.map(c => `<div>${fmtTs(c.quando)} · ${esc(c.testo)}</div>`).join("")}</div>` : ""}
     ${(n.versioni_testo || []).length ? `<details class="flat"><summary class="tiny">Versioni precedenti (${n.versioni_testo.length})</summary><div class="inner versions">${n.versioni_testo.map(v => `<div>${fmtTs(v.quando)} · [${fmtDate(v.data_nota)}] ${esc(v.testo)}</div>`).join("")}</div></details>` : ""}
@@ -922,6 +963,7 @@ function bindNotaActions(root) {
     });
     if (n.analisi_stato === "da_aggiornare" && S.sample) mk("Rifai l'analisi", () => { showView("piano"); analizzaNota(n); });
     if (n.analisi_stato === "nessuna" && n.tipo === "nota" && S.sample) mk("Analizza", () => { showView("piano"); analizzaNota(n); });
+    mk("Collega a…", () => { const opts = Array.from(S.argomenti.values()).filter(a => a.stato !== "archiviato" && !(n.argomento_ids || []).includes(a.id)).sort((x, y) => x.titolo.localeCompare(y.titolo)); acts.innerHTML = `<div class="inline-edit"><label for="nl-${n.id}">Collega questa nota a un argomento esistente</label><select id="nl-${n.id}">${opts.map(a => `<option value="${a.id}">${esc(a.titolo)}</option>`).join("")}</select><div class="row"><button class="primary small" id="nlo-${n.id}">Collega</button><button class="small quiet" id="nla-${n.id}">Annulla</button></div></div>`; $("#nla-" + n.id).addEventListener("click", renderAll); $("#nlo-" + n.id).addEventListener("click", async () => { const id = $("#nl-" + n.id).value; if (!id) return; const nn = clone(n); nn.argomento_ids = Array.from(new Set((nn.argomento_ids || []).concat([id]))); nn.collegamenti = (nn.collegamenti || []).concat([{ quando: nowIso(), argomento_id: id, come: "manuale" }]); await save("note", n.id, nn, { label: "Nota collegata" }); toast("Nota collegata a «" + (argTitolo(id) || "") + "»", true); }); });
     mk("Copia", () => copyText(n.testo_originale + ((n.correzioni || []).length ? "\n\nCorrezioni: " + n.correzioni.map(c => c.testo).join(" | ") : "")));
   });
 }
@@ -954,9 +996,17 @@ Distingui: errore precedente, novità successiva, valutazione personale. Non cam
     toast(nv ? nv + " impegni da verificare in Piano" : "Dati aggiornati" + (r.istruzioni_sospette ? " · frasi rivolte all'assistente ignorate" : ""));
   } catch (e) { const nn = clone(S.note.get(n.id) || n); nn.analisi_stato = "da_aggiornare"; await save("note", n.id, nn, { silent: true, noUndo: true }); toast("Correzione salvata · analisi da aggiornare"); }
 }
+// Ricerca tollerante: niente punteggiatura/accenti, ogni parola per radice, parole anche lontane tra loro.
+function normTxt(s) { return String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
+function matchQ(text, q) {
+  const qq = normTxt(q).trim(); if (!qq) return true;
+  const t1 = normTxt(text).replace(/[^\p{L}\p{N}]+/gu, " "); const t2 = normTxt(text).replace(/[^\p{L}\p{N}]+/gu, "");
+  return qq.split(/[^\p{L}\p{N}]+/u).filter(Boolean).every(tok => { const stem = tok.length >= 7 ? tok.slice(0, 6) : tok.length >= 5 ? tok.slice(0, tok.length - 1) : tok; return t1.includes(stem) || t2.includes(stem); });
+}
 function renderStoria() {
   const q = ($("#storia-cerca").value || "").toLowerCase().trim(); const f = S.storiaFiltro; const el = $("#storia-elenco");
-  const match = s => !q || String(s || "").toLowerCase().includes(q);
+  const match = s => matchQ(s, q);
+  renderStoriaStrumenti();
   let items = [];
   if (f === "tutto" || f === "note") for (const n of S.note.values()) { if (n.tipo === "esito" && f === "note") continue; if (match(n.testo_originale + " " + (n.argomento_ids || []).map(argTitolo).join(" "))) items.push({ k: n.data_nota + (n.creato || ""), h: notaHTML(n) }); }
   if (f === "tutto" || f === "esiti") { for (const n of S.note.values()) if (n.tipo === "esito" && f === "esiti" && match(n.testo_originale)) items.push({ k: n.data_nota + (n.creato || ""), h: notaHTML(n) }); for (const i of S.impegni.values()) if (i.stato === "fatto" && match(i.titolo + " " + (i.esito || ""))) items.push({ k: (i.fatto_il || "").slice(0, 10) + (i.fatto_il || ""), h: impegnoHTML(i) }); }
