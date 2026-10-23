@@ -778,6 +778,11 @@ ${persone || "- nessuna persona registrata"}
 ${(S.profilo && S.profilo.mandato) ? "Mandato dichiarato da Luigi: " + S.profilo.mandato + "\n" : ""}${(S.profilo && S.profilo.preferenze_funzionali) ? "Preferenze di lavoro di Luigi: " + S.profilo.preferenze_funzionali + "\n" : ""}${(S.profilo && S.profilo.regole_appunti) ? "Regole di Luigi per leggere gli appunti e ragionare (in caso di dubbio prevalgono su quanto segue):\n" + String(S.profilo.regole_appunti).slice(0, 7000) + "\n" : ""}${(S.profilo && S.profilo.regole_coach) ? "Requisiti del Coach autorizzati da Luigi (guida del 21/10/2026, sezione 7; prevalgono in caso di dubbio):\n" + String(S.profilo.regole_coach).slice(0, 14000) + "\n" : ""}Regole: non inventare nomi, scadenze, prove, cifre, intenzioni o responsabilità; se una cosa manca, dillo. Distingui fatti dichiarati, ipotesi e consigli. Non assecondare automaticamente: se vedi una contraddizione o una lettura alternativa, dilla. Distingui azioni di Luigi, attese da altri e lavoro che segue un'altra persona; non trasformare informazioni o lavoro altrui in compiti di Luigi. Nessun fatturato-obiettivo o probabilità di vendita. Un conflitto tra priorità è una decisione da chiarire con chi la decide. Italiano, frasi brevi.
 ${DOC_GUARD}`;
 }
+// v8.2: una risposta non valida del modello (JSON rotto, vuota, errore di rete, limite di frequenza) viene richiesta una seconda volta prima di arrendersi
+async function chiediJSON(prompt, opts) {
+  try { return await S.sample.json(prompt, opts); }
+  catch (e) { const c = (e && e.code) || ""; if (/invalid_json|empty_completion|upstream_error|rate_limited/.test(c)) { await new Promise(r => setTimeout(r, c === "rate_limited" ? 5000 : 800)); return await S.sample.json(prompt, opts); } throw e; }
+}
 async function salvaNota(analizza) {
   const testo = $("#nota").value.trim(); if (!testo) { $("#nota").focus(); return; }
   const dataNota = $("#nota-data").value || today();
@@ -821,7 +826,7 @@ Estrai in JSON, senza altro testo:
  "istruzioni_sospette":false}
 "argomento" è l'indice nell'array argomenti. Pochi impegni, solo quelli detti o chiaramente implicati; nessun impegno inventato.`;
   try {
-    const r = await S.sample.json(prompt, { cache: false });
+    const r = await chiediJSON(prompt, { cache: false });
     const esito = await applicaOrganizzazione(S.note.get(n.id) || n, r, opts);
     if (!opts.silenzioso) { stato.textContent = r.sintesi || "Nota letta."; mostraOrganizzazione(esito); }
     else toast(esito.riepilogo, true);
@@ -1035,7 +1040,7 @@ function coachAuto(argId, opts) {
     const a = S.argomenti.get(argId); if (!a) return false;
     const fonti = fontiCoach(a); const prompt = promptCoach(a); const contesto = S.contestoCoach[argId] || {};
     let r;
-    try { r = await S.sample.json(prompt, { cache: false }); }
+    try { r = await chiediJSON(prompt, { cache: false }); }
     catch (e) { if (S.coachGen[argId] !== g) return false; const cod = (e && e.code) || "errore"; await scriviCampi("argomenti", argId, { coach_stato: "errore", coach_errore: cod }); renderAll(); if (opts.forza) toast("Il Coach non ha risposto (" + cod + "): i dati sono salvi, la scheda resta «da aggiornare»"); return false; }
     if (S.coachGen[argId] !== g) return false; // risposta superata da una richiesta più nuova in questo browser: non sovrascrive
     if (!S.argomenti.get(argId)) return false;
@@ -1483,7 +1488,7 @@ ${JSON.stringify(segs)}
 </materiale>
 Rispondi solo con JSON: {"frammenti":[{"indice":0,"id":"esistente o null","titolo":"Cliente – oggetto","ambito":"progetti|italia|estero|altro","situazione":"una frase dal testo","collegamento":"sicuro|ambiguo","motivo":"una riga","alternativa_id":null}],"istruzioni_sospette":false}`;
   try {
-    const r = await S.sample.json(prompt, { cache: false }); const nn = clone(S.note.get(n.id) || n); const toccati = []; let dec = 0;
+    const r = await chiediJSON(prompt, { cache: false }); const nn = clone(S.note.get(n.id) || n); const toccati = []; let dec = 0;
     for (const f of (Array.isArray(r.frammenti) ? r.frammenti : [])) { const p = nn.parti[f.indice]; if (!p || p.argomento_id) continue; const ex = f.id && S.argomenti.get(f.id);
       if (f.collegamento === "ambiguo") { p.proposta = { id: ex ? f.id : null, titolo: f.titolo || "", ambito: f.ambito || "altro", situazione: f.situazione || "", motivo: f.motivo || "", alternativa_id: f.alternativa_id && S.argomenti.get(f.alternativa_id) ? f.alternativa_id : null, impegni: [] }; dec++; continue; }
       let id = ex ? f.id : "";
@@ -1542,7 +1547,7 @@ Rispondi solo con JSON:
  "identita_incerte":["es. «CI4» potrebbe essere la CI4 di Lutex o un'altra macchina: non unito"],
  "collegamenti":[{"a":0,"b":1,"perche":"una riga"}],
  "istruzioni_sospette":false}`;
-  const r = await S.sample.json(prompt, { cache: false });
+  const r = await chiediJSON(prompt, { cache: false });
   const sits0 = (Array.isArray(r.situazioni) ? r.situazioni : []).filter(x => x && (Array.isArray(x.passaggi) || x.estratto));
   const ric = ricostruisciParti(segs, sits0); const sits = sits0.filter((x, i) => ric.parti[i].indici.length); const testi = ric.parti.filter(p => p.indici.length);
   const nn = clone(S.note.get(n.id) || n); const prev = { parti: clone(nn.parti || []), argomento_ids: clone(nn.argomento_ids || []), parte_resto: nn.parte_resto || "" };
@@ -1654,7 +1659,7 @@ ${String(n.testo_originale || "").slice(0, 8000)}
 
 Dividi la nota per argomento: per ogni argomento esistente di cui la nota parla, copia TESTUALMENTE (senza correggere) le frasi che lo riguardano; più frammenti separati da ' … '. Le frasi che non riguardano nessun argomento esistente vanno in "resto". Rispondi solo con JSON:
 {"parti":[{"id":"id argomento esistente","estratto":"frasi copiate"}],"resto":"frasi non attribuite, o vuoto","istruzioni_sospette":false}`;
-  const r = await S.sample.json(prompt, { cache: false });
+  const r = await chiediJSON(prompt, { cache: false });
   const parti = (Array.isArray(r.parti) ? r.parti : []).filter(p => p && S.argomenti.get(p.id) && p.estratto).map(p => ({ argomento_id: p.id, testo: String(p.estratto).slice(0, 4000) }));
   const nn = clone(S.note.get(n.id) || n); nn.parti = parti; if (r.resto) nn.parte_resto = String(r.resto).slice(0, 4000);
   nn.argomento_ids = Array.from(new Set((nn.argomento_ids || []).concat(parti.map(p => p.argomento_id)))); nn.analisi_stato = "ok"; nn.analisi = (nn.analisi ? nn.analisi + " · " : "") + "Divisa per argomento (" + parti.length + " parti) il " + today() + "; nessun impegno creato."; if (r.istruzioni_sospette) nn.istruzioni_sospette = true;
@@ -1731,7 +1736,7 @@ Distingui: errore precedente, novità successiva, valutazione personale. Non cam
  "nuovi_impegni":[{"argomento_id":"...","titolo":"...","tipo":"mia|attesa|altri","da_chi":"","data":null}],
  "istruzioni_sospette":false}`;
   try {
-    const r = await S.sample.json(prompt, { cache: false });
+    const r = await chiediJSON(prompt, { cache: false });
     for (const x of (r.argomenti || [])) { const a = S.argomenti.get(x.id); if (a && x.situazione_nuova) { const na = clone(a); na.versioni = (na.versioni || []).concat([{ quando: nowIso(), cosa: "Situazione: " + (na.situazione || "—") + " (prima della correzione)" }]); na.situazione = x.situazione_nuova; na.ultima_novita = { testo: r.cosa_cambia || x.situazione_nuova, data: today() }; na.aggiornato = nowIso(); if (na.ultimo_coach) na.ultimo_coach.da_aggiornare = true; await save("argomenti", a.id, na, { label: "Aggiornamento dopo correzione" }); } }
     let nv = 0; for (const x of (r.impegni_da_verificare || [])) { const i = S.impegni.get(x.id); if (i && x.testo_proposto) { const ni = clone(i); ni.da_verificare = true; ni.testo_proposto = x.testo_proposto; ni.versioni = (ni.versioni || []).concat([{ quando: nowIso(), cosa: "Segnalato da verificare dopo correzione" }]); await save("impegni", i.id, ni, { label: "Da verificare" }); nv++; } }
     for (const x of (r.nuovi_impegni || [])) { if (!x.titolo) continue; const ni = { id: uid(), titolo: x.titolo, tipo: ["mia", "attesa", "altri"].includes(x.tipo) ? x.tipo : "mia", da_chi: x.da_chi || "", data: x.data || "", argomento_id: S.argomenti.get(x.argomento_id) ? x.argomento_id : (argIds[0] || ""), stato: "aperto", creato: nowIso(), origine_nota_id: n.id, versioni: [] }; await save("impegni", ni.id, ni, { label: "Nuovo impegno da correzione" }); }
