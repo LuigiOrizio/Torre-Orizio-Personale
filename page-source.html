@@ -1129,6 +1129,39 @@ async function salvaLezione() {
   } catch (e) { st.textContent = "Non salvata: " + (e && e.code || e && e.message || "errore"); }
 }
 
+// ---------- STORIA: una scheda per ogni parte di una nota divisa ----------
+function parteHTML(n, p, i) {
+  const tit = p.argomento_id ? (argTitolo(p.argomento_id) || "Argomento") : "Senza argomento";
+  const nParti = (Array.isArray(n.parti) ? n.parti.length : 0) + (n.parte_resto ? 1 : 0);
+  return `<div class="item" data-parte="${n.id}:${i}"><div class="stripe ${p.argomento_id ? "mia" : "attesa"}"></div><div class="grow">
+    <div class="row"><span class="chip ${p.argomento_id ? "mia" : "attesa"}">${esc(tit)}</span><span class="tiny">${fmtDate(n.data_nota)}${n.creato ? " · scritta " + fmtTs(n.creato) : ""} · parte di una nota in ${nParti}</span>${n.analisi_stato === "da_aggiornare" ? '<span class="chip err">Analisi da aggiornare</span>' : ""}</div>
+    <div style="white-space:pre-wrap">${esc(p.testo)}</div>
+    ${(n.correzioni || []).length ? `<div class="versions">${n.correzioni.map(c => `<div>${fmtTs(c.quando)} · ${esc(c.testo)}</div>`).join("")}</div>` : ""}
+    <div class="row" data-parte-actions></div>
+    <div data-parte-intera></div></div></div>`;
+}
+function bindParteActions(root) {
+  $$("[data-parte]", root).forEach(el => {
+    const [nid, is] = el.dataset.parte.split(":"); const i = Number(is); const n = S.note.get(nid); if (!n) return;
+    const p = i >= 0 ? (n.parti || [])[i] : { argomento_id: "", testo: n.parte_resto || "" }; if (!p) return;
+    const acts = $("[data-parte-actions]", el); const mk = (l, fn) => { const b = document.createElement("button"); b.className = "small quiet"; b.textContent = l; b.addEventListener("click", fn); acts.appendChild(b); };
+    mk(p.argomento_id ? "Collega anche a…" : "Collega a…", () => {
+      const opts = Array.from(S.argomenti.values()).filter(a => a.stato !== "archiviato" && a.id !== p.argomento_id).sort((x, y) => x.titolo.localeCompare(y.titolo));
+      acts.innerHTML = `<div class="inline-edit"><label>Argomento per questa parte</label><select data-sel>${opts.map(a => `<option value="${a.id}">${esc(a.titolo)}</option>`).join("")}</select><div class="row"><button class="primary small" data-ok>Collega</button><button class="small quiet" data-an>Annulla</button></div></div>`;
+      $("[data-an]", acts).addEventListener("click", renderAll);
+      $("[data-ok]", acts).addEventListener("click", async () => {
+        const id = $("[data-sel]", acts).value; if (!id) return; const nn = clone(n);
+        if (i >= 0) nn.parti = (nn.parti || []).concat([{ argomento_id: id, testo: p.testo, da_parte: i }]); // la stessa parte vale anche per un altro argomento
+        else { nn.parti = (nn.parti || []).concat([{ argomento_id: id, testo: p.testo }]); delete nn.parte_resto; }
+        nn.argomento_ids = Array.from(new Set((nn.argomento_ids || []).concat([id]))); nn.collegamenti = (nn.collegamenti || []).concat([{ quando: nowIso(), argomento_id: id, come: "manuale", parte: i }]);
+        await save("note", n.id, nn, { label: "Parte collegata" }); toast("Collegata a «" + (argTitolo(id) || "") + "»", true);
+      });
+    });
+    mk("Copia", () => copyText(p.testo));
+    mk("Nota intera", () => { const box = $("[data-parte-intera]", el); if (box.innerHTML) { box.innerHTML = ""; return; } box.innerHTML = `<div class="eyebrow" style="margin-top:8px">Nota intera (originale)</div>` + notaHTML(n); bindNotaActions(box); });
+  });
+}
+
 // ---------- STORIA: divisione in blocco delle note lunghe non analizzate ----------
 function noteDaDividere() { return Array.from(S.note.values()).filter(n => n.tipo === "nota" && n.analisi_stato === "nessuna" && !(Array.isArray(n.parti) && n.parti.length) && String(n.testo_originale || "").length > 250); }
 function renderStoriaStrumenti() {
@@ -1241,13 +1274,20 @@ function renderStoria() {
   const match = s => matchQ(s, q);
   renderStoriaStrumenti();
   let items = [];
-  if (f === "tutto" || f === "note") for (const n of S.note.values()) { if (n.tipo === "esito" && f === "note") continue; if (match(n.testo_originale + " " + (n.argomento_ids || []).map(argTitolo).join(" "))) items.push({ k: n.data_nota + (n.creato || ""), h: notaHTML(n) }); }
+  if (f === "tutto" || f === "note") for (const n of S.note.values()) {
+    if (n.tipo === "esito" && f === "note") continue;
+    const parti = Array.isArray(n.parti) ? n.parti.filter(p => p && p.testo) : [];
+    if (parti.length) { // una scheda per parte; il resto non attribuito è una scheda «Senza argomento»
+      const tutte = parti.map((p, i) => ({ p, i })).concat(n.parte_resto ? [{ p: { argomento_id: "", testo: n.parte_resto }, i: -1 }] : []);
+      tutte.forEach(({ p, i }) => { if (match(p.testo + " " + (argTitolo(p.argomento_id) || ""))) items.push({ k: n.data_nota + (n.creato || "") + "-" + String(i + 1).padStart(2, "0"), h: parteHTML(n, p, i) }); });
+    } else if (match(n.testo_originale + " " + (n.argomento_ids || []).map(argTitolo).join(" "))) items.push({ k: n.data_nota + (n.creato || ""), h: notaHTML(n) });
+  }
   if (f === "tutto" || f === "esiti") { for (const n of S.note.values()) if (n.tipo === "esito" && f === "esiti" && match(n.testo_originale)) items.push({ k: n.data_nota + (n.creato || ""), h: notaHTML(n) }); for (const i of S.impegni.values()) if (i.stato === "fatto" && match(i.titolo + " " + (i.esito || ""))) items.push({ k: (i.fatto_il || "").slice(0, 10) + (i.fatto_il || ""), h: impegnoHTML(i) }); }
   if (f === "tutto" || f === "archiviati") for (const a of S.argomenti.values()) if (a.stato === "archiviato" && match(a.titolo + " " + a.situazione)) items.push({ k: (a.archiviato_il || "").slice(0, 10) + (a.archiviato_il || ""), h: `<div class="item"><div class="stripe"></div><div class="grow"><div class="row"><span class="chip">Archiviato</span><span class="tiny">${fmtTs(a.archiviato_il)}</span></div><div class="t">${esc(a.titolo)}</div><div class="meta">${esc(a.situazione || "")}</div><div class="row"><button class="small quiet" data-open="${a.id}">Apri nel Coach</button></div></div></div>` });
   if (f === "tutto" && q) for (const a of S.argomenti.values()) if (a.stato !== "archiviato" && match(a.titolo + " " + a.situazione)) items.push({ k: a.aggiornato || "", h: `<div class="item"><div class="stripe mia"></div><div class="grow"><div class="row"><span class="chip ok">Argomento aperto</span></div><div class="t">${esc(a.titolo)}</div><div class="meta">${esc(a.situazione || "")}</div><div class="row"><button class="small quiet" data-open="${a.id}">Apri nel Coach</button></div></div></div>` });
   items.sort((x, y) => y.k.localeCompare(x.k));
   el.innerHTML = items.length ? items.slice(0, 80).map(i => i.h).join("") : `<div class="empty">Niente da mostrare${q ? " per «" + esc(q) + "»" : ""}.</div>`;
-  bindNotaActions(el); bindImpegnoActions(el, "storia");
+  bindNotaActions(el); bindParteActions(el); bindImpegnoActions(el, "storia");
   $$("[data-open]", el).forEach(b => b.addEventListener("click", () => { S.coachArg = b.dataset.open; S.coachOut = null; showView("coach"); renderCoachElenco(); renderCoachScheda(); }));
 }
 
