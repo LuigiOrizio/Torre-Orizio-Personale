@@ -303,22 +303,41 @@ ${lezioni.map(l => `## ${l.id} · ${l.titolo}${l.fonte ? " (" + String(l.fonte).
 }
 
 // ---------- dipendenze: una nota o lezione cambiata segna «da aggiornare» ciò che l'ha usata ----------
+// v8.2: confronto sui CONTENUTI effettivi (testo, parti con il loro testo e argomento, rettifiche, collegamenti), non sulle lunghezze delle liste.
 function contenutoCambiato(coll, prev, next) {
+  const J = x => JSON.stringify(x === undefined ? null : x);
   if (!prev) return false;
-  if (coll === "note") return prev.testo_originale !== next.testo_originale || (prev.correzioni || []).length !== (next.correzioni || []).length;
-  if (coll === "lezioni") return JSON.stringify(prev.principi || []) !== JSON.stringify(next.principi || []) || (prev.correzioni || []).length !== (next.correzioni || []).length || prev.testo !== next.testo;
+  if (coll === "note") { const f = n => [n.testo_originale, n.data_nota, (n.parti || []).map(p => [p.argomento_id || "", p.testo || "", !!p.non_assegnata]), n.correzioni || [], n.argomento_ids || [], n.parte_resto || "", n.identita_incerte || [], n.tipo || "nota"]; return J(f(prev)) !== J(f(next)); }
+  if (coll === "lezioni") return J(prev.principi || []) !== J(next.principi || []) || J(prev.correzioni || []) !== J(next.correzioni || []) || prev.testo !== next.testo;
   return false;
 }
-function segnaDipendentiServer(coll, id) {
+function argomentiDiNota(n) { if (!n) return []; return Array.from(new Set((n.argomento_ids || []).concat((n.parti || []).map(p => p.argomento_id).filter(Boolean)))); }
+// Segna «da aggiornare» le sintesi e le verifiche online che dipendono dalla nota/lezione cambiata: per una nota, TUTTI gli argomenti collegati prima
+// E dopo la modifica (origine e destinazione di uno spostamento), archiviati compresi.
+function segnaDipendentiServer(coll, id, prevData, nextData) {
   const quando = new Date().toISOString(); let n = 0;
+  // argomenti toccati: tutti se cambiano testo originale, data o rettifiche; altrimenti solo quelli le cui parti (testo) o la cui appartenenza sono cambiate
+  let toccati = null;
+  if (coll === "note") { const J = x => JSON.stringify(x === undefined ? null : x); const p = prevData || {}, q = nextData || {}; const tutti = Array.from(new Set(argomentiDiNota(p).concat(argomentiDiNota(q))));
+    const globale = p.testo_originale !== q.testo_originale || p.data_nota !== q.data_nota || J(p.correzioni || []) !== J(q.correzioni || []) || J(p.identita_incerte || []) !== J(q.identita_incerte || []);
+    const partiDi = (n, id) => (n.parti || []).filter(x => x.argomento_id === id).map(x => x.testo || "");
+    toccati = new Set(globale ? tutti : tutti.filter(id => J(partiDi(p, id)) !== J(partiDi(q, id)) || argomentiDiNota(p).includes(id) !== argomentiDiNota(q).includes(id))); }
   for (const [k, v] of Object.entries(db.docs)) {
-    if (v.deleted || !k.startsWith("argomenti/")) continue; const a = v.data; let cambia = false; const na = Object.assign({}, a);
+    if (v.deleted || !k.startsWith("argomenti/")) continue; const a = v.data; const aId = k.slice(10); let cambia = false; const na = Object.assign({}, a);
     if (Array.isArray(a.ricerche)) na.ricerche = a.ricerche.map(r => { const usa = r.usa || {}; const dip = coll === "note" ? (usa.note || []).some(x => x.id === id) : (usa.lezioni || []).some(x => x.id === id); if (dip && r.stato_analisi !== "da_aggiornare") { cambia = true; return Object.assign({}, r, { stato_analisi: "da_aggiornare", da_aggiornare_per: (coll === "note" ? "nota " : "lezione ") + id + " corretta il " + quando }); } return r; });
-    const usaCoach = coll === "note" ? (a.argomento_ids_note || []).includes(id) || (() => { const nd = db.docs["note/" + id]; return !!(nd && !nd.deleted && (nd.data.argomento_ids || []).includes(k.slice(10))); })() : true;
-    if (a.ultimo_coach && !a.ultimo_coach.da_aggiornare && usaCoach) { na.ultimo_coach = Object.assign({}, a.ultimo_coach, { da_aggiornare: true }); cambia = true; }
-    if (cambia) { putDoc("argomenti", k.slice(10), na); n++; }
+    const usaCoach = coll === "note" ? toccati.has(aId) : true;
+    if (a.ultimo_coach && !a.ultimo_coach.da_aggiornare && usaCoach) { na.ultimo_coach = Object.assign({}, a.ultimo_coach, { da_aggiornare: true, da_aggiornare_per: (coll === "note" ? "nota " : "lezione ") + id + " cambiata il " + quando }); cambia = true; }
+    if (cambia) { putDoc("argomenti", aId, na); n++; }
   }
   return n;
+}
+// Una risposta del Coach arriva con le versioni (seq) delle fonti che ha usato: se una fonte è cambiata nel frattempo, la scrittura viene rifiutata
+// (409 fonti_superate) e il client la conserva come «superata». Controllo atomico: avviene nello stesso passo della scrittura, sul server.
+function fontiSuperate(data, prev) { // solo quando la scrittura porta una NUOVA risposta del Coach (non per le modifiche normali della scheda)
+  const uc = data && data.ultimo_coach; if (!uc || !Array.isArray(uc.fonti) || !uc.fonti.length || data.coach_stato !== "ok") return null;
+  if (prev && prev.ultimo_coach && prev.ultimo_coach.quando === uc.quando) return null;
+  const cambiate = uc.fonti.filter(f => { const d = db.docs[f.coll + "/" + f.id]; const cur = d && !d.deleted ? d.seq : 0; return Number(f.seq) !== cur; });
+  return cambiate.length ? cambiate : null;
 }
 
 // ---------- routing ----------
@@ -354,11 +373,12 @@ const server = http.createServer(async (req, res) => {
         if (!body || typeof body.data !== "object" || body.data === null || Array.isArray(body.data)) return json(res, 400, { error: "invalid_argument" });
         // `base` = versione (seq) che il client ha letto; 0 per un documento nuovo. Senza `base` (o con force) si sovrascrive esplicitamente.
         const prevDoc = db.docs[key]; const prevData = prevDoc && !prevDoc.deleted ? prevDoc.data : null; const cambiato = (coll === "note" || coll === "lezioni") && contenutoCambiato(coll, prevData, body.data);
-        if (body.force === true || body.base === undefined) { const seq = putDoc(coll, id, body.data); const dip = cambiato ? segnaDipendentiServer(coll, id) : 0; return json(res, 200, { ok: true, seq, forced: body.force === true, dipendenti_segnati: dip }); }
+        if (coll === "argomenti") { const sup = fontiSuperate(body.data, prevData); if (sup) return json(res, 409, { error: "conflict", current: { exists: !!prevData, data: prevData, seq: prevDoc && !prevDoc.deleted ? prevDoc.seq : 0, fonti_superate: true, cambiate: sup } }); }
+        if (body.force === true || body.base === undefined) { const seq = putDoc(coll, id, body.data); const dip = cambiato ? segnaDipendentiServer(coll, id, prevData, body.data) : 0; return json(res, 200, { ok: true, seq, forced: body.force === true, dipendenti_segnati: dip }); }
         const base = Number(body.base); if (!Number.isInteger(base) || base < 0) return json(res, 400, { error: "invalid_argument" });
         const r = putDocIfVersion(coll, id, body.data, base);
         if (r.conflict) return json(res, 409, { error: "conflict", current: r.current });
-        const dip = cambiato ? segnaDipendentiServer(coll, id) : 0;
+        const dip = cambiato ? segnaDipendentiServer(coll, id, prevData, body.data) : 0;
         return json(res, 200, { ok: true, seq: r.seq, dipendenti_segnati: dip });
       }
       if (req.method === "DELETE") { const seq = delDoc(coll, id); return json(res, 200, { ok: true, seq }); }
