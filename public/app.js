@@ -1198,7 +1198,7 @@ function bindParteActions(root) {
   $$("[data-parte]", root).forEach(el => {
     const [nid, is] = el.dataset.parte.split(":"); const i = Number(is); const n = S.note.get(nid); if (!n) return;
     const p = i >= 0 ? (n.parti || [])[i] : { argomento_id: "", testo: n.parte_resto || "" }; if (!p) return;
-    const acts = $("[data-parte-actions]", el); const mk = (l, fn, cls) => { const b = document.createElement("button"); b.className = cls || "small quiet"; b.textContent = l; b.addEventListener("click", fn); acts.appendChild(b); };
+    const acts = $("[data-parte-actions]", el); if (!acts || acts.dataset.legato) return; acts.dataset.legato = "1"; const mk = (l, fn, cls) => { const b = document.createElement("button"); b.className = cls || "small quiet"; b.textContent = l; b.addEventListener("click", fn); acts.appendChild(b); };
     const dopo = async (nn, label, ids) => { await save("note", n.id, nn, { label }); for (const id of Array.from(new Set(ids.filter(Boolean)))) coachAuto(id); };
     const ricalcolaIds = (nn) => { nn.argomento_ids = Array.from(new Set((nn.parti || []).map(x => x.argomento_id).filter(Boolean).concat((nn.collegamenti || []).filter(c => c.come === "manuale" && c.parte === undefined).map(c => c.argomento_id)))); };
     // ordine fisso: Collega/Sposta · Scollega · Separa · Copia · Nota intera
@@ -1404,13 +1404,25 @@ function apriSelezioneFrasi(n, idx, host) {
 }
 
 // ---------- STORIA: divisione in blocco delle note lunghe non analizzate ----------
+function migraResto(n) { // v8.2.1: il «resto» delle vecchie divisioni diventa una parte senza argomento con tutti i comandi
+  if (!n || !n.parte_resto || S.migrati.has(n.id)) return; S.migrati.add(n.id); const nn = clone(n); nn.parti = (nn.parti || []).concat([{ argomento_id: "", testo: nn.parte_resto, non_assegnata: true }]); delete nn.parte_resto; save("note", n.id, nn, { silent: true, noUndo: true, noRender: true }).catch(() => {});
+}
+S.migrati = new Set();
+// candidati alla divisione: note intere non divise e parti «Senza argomento» ancora lunghe
+function daDividere() {
+  const out = [];
+  for (const n of S.note.values()) { if (n.tipo !== "nota") continue; const parti = Array.isArray(n.parti) ? n.parti : [];
+    if (!parti.length) { if ((frasiDi(n.testo_originale).length >= 3 || String(n.testo_originale || "").length > 400) && String(n.testo_originale || "").length > 200) out.push({ n, idx: null, testo: n.testo_originale }); continue; }
+    parti.forEach((p, i) => { if (!p.argomento_id && !p.proposta && segmentaTesto(p.testo).length >= 2 && String(p.testo || "").length > 120) out.push({ n, idx: i, testo: p.testo }); }); }
+  return out;
+}
 function noteDaDividere() { return Array.from(S.note.values()).filter(n => n.tipo === "nota" && !(Array.isArray(n.parti) && n.parti.length) && (frasiDi(n.testo_originale).length >= 3 || String(n.testo_originale || "").length > 400) && String(n.testo_originale || "").length > 200); }
 function renderStoriaStrumenti() {
   let box = $("#storia-strumenti"); const el = $("#storia-elenco"); if (!el) return;
   if (!box) { box = document.createElement("div"); box.id = "storia-strumenti"; el.parentNode.insertBefore(box, el); }
-  const n = noteDaDividere().length;
+  const n = daDividere().length;
   const ris = $("#dividi-risultato"); const keep = ris ? ris.outerHTML : "";
-  box.innerHTML = (S.divisioneInCorso ? `<div class="row" style="margin-bottom:10px"><button class="small" id="btn-dividi" disabled>Dividi in situazioni…</button><span class="tiny" id="dividi-stato"><span class="spin"></span> ${esc(S.divisioneStato || "")}</span></div>` : n && S.sample ? `<div class="row" style="margin-bottom:10px"><button class="small" id="btn-dividi">Dividi in situazioni le note non divise (${n})</button><span class="tiny">Riconosce i lavori distinti e crea le schede; l'originale resta intero; tutto annullabile dalla nota.</span></div><div id="dividi-stato" class="tiny"></div>` : "") + keep;
+  box.innerHTML = (S.divisioneInCorso ? `<div class="row" style="margin-bottom:10px"><button class="small" id="btn-dividi" disabled>Dividi in situazioni…</button><span class="tiny" id="dividi-stato"><span class="spin"></span> ${esc(S.divisioneStato || "")}</span></div>` : n && S.sample ? `<div class="row" style="margin-bottom:10px"><button class="small" id="btn-dividi">Dividi in situazioni (${n} da dividere)</button><span class="tiny">Note intere e parti «Senza argomento» ancora lunghe: riconosce i lavori distinti e crea le schede; l'originale resta intero; tutto annullabile dalla nota.</span></div><div id="dividi-stato" class="tiny"></div>` : "") + keep;
   if (keep) { const r2 = $("#dividi-risultato"); $("[data-chiudi]", r2).addEventListener("click", () => r2.remove()); $("[data-und]", r2).addEventListener("click", () => { const nid = r2.dataset.nota; r2.remove(); const nn = S.note.get(nid); if (nn) annullaDivisione(nn); }); }
   const b = $("#btn-dividi"); if (b) b.addEventListener("click", dividiNoteInBlocco);
 }
@@ -1434,8 +1446,8 @@ Dividi la nota per argomento: per ogni argomento esistente di cui la nota parla,
   await save("note", n.id, nn, { silent: true, noUndo: true, noRender: true }); return parti.length;
 }
 async function dividiNoteInBlocco() {
-  const list = noteDaDividere(); if (S.divisioneInCorso) return; S.divisioneInCorso = true; let fatte = 0, parti = 0, nuove = 0; const t0 = Date.now();
-  for (const n of list) { S.divisioneStato = `Divido la nota ${fatte + 1} di ${list.length}…`; renderStoriaStrumenti(); try { const res = await dividiInSituazioni(n, null, { coach: false, noRender: true }); if (res) { parti += res.parti.length; nuove += res.creati.length; } fatte++; } catch (e) { S.divisioneInCorso = false; S.ultimaDivisioneBlocco = { fatte, parti, nuove, errore: (e && e.code) || "errore" }; renderAll(); toast("Interrotto alla nota " + (fatte + 1) + " (" + (e && e.code || "errore") + "); le note già divise sono salvate (ognuna annullabile dalla Storia)."); return; } }
+  const list = daDividere(); if (S.divisioneInCorso) return; S.divisioneInCorso = true; let fatte = 0, parti = 0, nuove = 0; const t0 = Date.now();
+  for (const c of list) { S.divisioneStato = `Divido ${fatte + 1} di ${list.length}…`; renderStoriaStrumenti(); try { const n = S.note.get(c.n.id) || c.n; let idx = c.idx; if (idx != null) { idx = (n.parti || []).findIndex(p => !p.argomento_id && normEsatta(p.testo) === normEsatta(c.testo)); if (idx < 0) { fatte++; continue; } } const res = await dividiInSituazioni(n, idx, { coach: false, noRender: true }); if (res) { parti += res.parti.length; nuove += res.creati.length; } fatte++; } catch (e) { S.divisioneInCorso = false; S.ultimaDivisioneBlocco = { fatte, parti, nuove, errore: (e && e.code) || "errore" }; renderAll(); toast("Interrotto alla nota " + (fatte + 1) + " (" + (e && e.code || "errore") + "); le note già divise sono salvate (ognuna annullabile dalla Storia)."); return; } }
   S.divisioneInCorso = false; S.ultimaDivisioneBlocco = { fatte, parti, nuove, secondi: Math.round((Date.now() - t0) / 1000) }; renderAll(); toast(`Divise ${fatte} note in ${parti} parti (${nuove} situazioni nuove, ${S.ultimaDivisioneBlocco.secondi} s). Il Coach si aggiorna sulle situazioni in vista.`, true);
 }
 
@@ -1461,7 +1473,7 @@ function notaHTML(n, ctxArg, q) {
 }
 function bindNotaActions(root) {
   $$("[data-nota]", root).forEach(el => {
-    const n = S.note.get(el.dataset.nota); if (!n) return; const acts = $("[data-nota-actions]", el);
+    const n = S.note.get(el.dataset.nota); if (!n) return; const acts = $("[data-nota-actions]", el); if (!acts || acts.dataset.legato) return; acts.dataset.legato = "1";
     const mk = (l, fn) => { const b = document.createElement("button"); b.className = "small quiet"; b.textContent = l; b.addEventListener("click", fn); acts.appendChild(b); };
     // ordine fisso: Correggi · Modifica · Rifai l'analisi · Copia
     mk("Correggi", () => { acts.innerHTML = `<div class="inline-edit"><label>Aggiunta o correzione (es. «Mi ero dimenticato che…»)</label><input type="text" id="nc-${n.id}"><div class="row"><button class="primary small" id="nco-${n.id}">Salva e aggiorna</button><button class="small quiet" id="ncs-${n.id}">Salva solo</button><button class="small quiet" id="nca-${n.id}">Annulla</button></div></div>`;
@@ -1574,6 +1586,7 @@ function renderStoria() {
   const match = (s, corr) => matchQ(s, qi, corr); if (moduloAperto(el)) return;
   renderStoriaStrumenti();
   let items = [];
+  if (S.db) for (const n of S.note.values()) migraResto(n);
   if (f === "tutto" || f === "note") for (const n of S.note.values()) {
     if (n.tipo === "esito" && f === "note") continue;
     const parti = Array.isArray(n.parti) ? n.parti.filter(p => p && p.testo) : [];
