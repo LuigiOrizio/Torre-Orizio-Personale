@@ -34,7 +34,7 @@ function monthKey(iso) { return iso.slice(0, 7); }
 function weekDays(iso) { const [y, m, d] = iso.split("-").map(Number); const dt = new Date(y, m - 1, d); const day = (dt.getDay() + 6) % 7; dt.setDate(dt.getDate() - day); return Array.from({ length: 7 }, (_, i) => { const x = new Date(dt); x.setDate(dt.getDate() + i); return isoDate(x); }); }
 function copyText(txt) { return navigator.clipboard.writeText(txt).then(() => toast("Copiato")).catch(() => { const ta = document.createElement("textarea"); ta.value = txt; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); toast("Copiato"); } catch (e) { toast("Seleziona e copia il testo"); } ta.remove(); }); }
 // v8: stile delle schede compatte del Piano, aggiunto da qui per non toccare la pagina HTML
-const CSS_V8 = `.sit h3{font-size:1.05em}.clamp2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.sit .mossa{font-weight:700}.sit .lbl{font-size:.74em;letter-spacing:.05em;text-transform:uppercase;color:var(--accent);font-weight:700}.hl{background:var(--wait-soft);border-radius:4px;padding:0 2px}.chip.neg{background:var(--err-soft);color:var(--err)}.decisione{border:1px dashed var(--wait);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:6px}.sit-more{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line);padding-top:8px}`;
+const CSS_V8 = `.sit h3{font-size:1.05em}.clamp2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.sit .mossa{font-weight:700}.sit .lbl{font-size:.74em;letter-spacing:.05em;text-transform:uppercase;color:var(--accent);font-weight:700}.hl{background:var(--wait-soft);border-radius:4px;padding:0 2px}.chip.neg{background:var(--err-soft);color:var(--err)}.decisione{border:1px dashed var(--wait);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:6px}.sit-more{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line);padding-top:8px}.toast.show{pointer-events:none}.toast.show button{pointer-events:auto}button,.item,.card{scroll-margin-top:96px}`;
 function injectCssV8() { if ($("#css-v8")) return; const st = document.createElement("style"); st.id = "css-v8"; st.textContent = CSS_V8; document.head.appendChild(st); }
 
 // ---------- stato di salvataggio ----------
@@ -175,9 +175,10 @@ function bindUI() {
 function showView(v) { $$("nav.tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.view === v)); ["piano", "coach", "storia"].forEach(x => { $("#view-" + x).hidden = x !== v; }); window.scrollTo({ top: 0 }); lsSet("top_vista", v); }
 function renderAll() { renderPiano(); renderCoachElenco(); renderCoachScheda(); renderLezioni(); renderStoria(); renderCronologia(); }
 // v8: se dentro un contenitore c'è un modulo aperto con testo scritto, non lo ridisegno (gli aggiornamenti in sottofondo non devono cancellare quello che stai scrivendo)
-function moduloAperto(root) { if (!root) return false; const ae = document.activeElement; if (ae && root.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) && ae.id !== "storia-cerca" && ae.id !== "coach-cerca") return true; return Date.now() - (S.ultimoInput || 0) < 20000 && $$(".inline-edit textarea, .inline-edit input[type=text]", root).some(x => x.value.trim() && x !== S.ultimoInputEl); }
-document.addEventListener("input", e => { const t = e.target; if (t && t.closest && t.closest(".inline-edit, [data-sit-form]")) { S.ultimoInput = Date.now(); S.ultimoInputEl = null; } });
-document.addEventListener("click", e => { const b = e.target && e.target.closest && e.target.closest("button"); if (b && b.closest(".inline-edit, [data-sit-form]")) S.ultimoInput = 0; }, true);
+// un modulo è «aperto» se c'è un campo con il fuoco, oppure se dentro il contenitore c'è un modulo in linea usato negli ultimi 20 secondi (testo scritto o frasi toccate)
+function moduloAperto(root) { if (!root) return false; const ae = document.activeElement; if (ae && root.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) && ae.id !== "storia-cerca" && ae.id !== "coach-cerca") return true; return Date.now() - (S.ultimoInput || 0) < 20000 && !!$(".inline-edit, [data-sit-form] textarea", root); }
+document.addEventListener("input", e => { const t = e.target; if (t && t.closest && t.closest(".inline-edit, [data-sit-form]")) S.ultimoInput = Date.now(); });
+document.addEventListener("click", e => { const b = e.target && e.target.closest && e.target.closest("button"); if (b && b.closest(".inline-edit, [data-sit-form]")) { const firma = Array.from(b.attributes).map(x => x.name === "id" ? x.value : x.name).join(" "); S.ultimoInput = /(^|\s)(data-ok|data-an|data-crea|data-sposta|data-und|data-chiudi|ok-\S*|an-\S*|nco-\S*|ncs-\S*|nca-\S*|neo-\S*|nea-\S*|nlo-\S*|nla-\S*|prop-ok|prop-no|org-undo|org-chiudi)(\s|$)/.test(firma) ? 0 : Date.now(); } }, true);
 
 // ---------- modello ----------
 const argAperti = () => Array.from(S.argomenti.values()).filter(a => a.stato !== "archiviato").sort((a, b) => (b.aggiornato || "").localeCompare(a.aggiornato || ""));
@@ -300,7 +301,8 @@ function renderOggi() {
   if (dec.length) h += `<div class="card" style="border-color:var(--wait)"><div class="eyebrow">Da decidere (${dec.length})</div><p class="muted">Collegamenti incerti: una scelta sola per ciascuno, il testo resta com'è.</p>${dec.map(d => decisioneHTML(d)).join("")}</div>`;
   const oggiConfermati = aperti.filter(i => i.data && i.data <= t && !i.data_stimata && !i.principale).sort((a, b) => a.data.localeCompare(b.data));
   if (oggiConfermati.length) h += `<div class="card"><div class="eyebrow">Con data, oggi o scaduti (${oggiConfermati.length})</div>${oggiConfermati.slice(0, 5).map(impegnoHTML).join("")}${oggiConfermati.length > 5 ? `<details class="flat"><summary class="tiny">Altri ${oggiConfermati.length - 5}</summary><div class="inner">${oggiConfermati.slice(5).map(impegnoHTML).join("")}</div></details>` : ""}</div>`;
-  const sits = situazioniDaSeguire(); const inVista = sits.slice(0, 3); const altre = sits.slice(3);
+  const sits = situazioniDaSeguire(); const conSegnale = sits.filter(a => (S.attenzione.get(a.id) || 0) >= 10); const inVista = (conSegnale.length ? conSegnale : sits.slice(0, 1)).slice(0, 3); const altre = sits.filter(a => !inVista.includes(a));
+  if (S.sample && !S.divisioneInCorso) for (const a of inVista) { const cs = coachStato(a); const chiesti = S.coachChiesto || (S.coachChiesto = new Set()); if ((cs === "nessuno" || (cs === "da_aggiornare" && a.coach_stato !== "errore")) && !chiesti.has(a.id) && chiesti.size < 6) { chiesti.add(a.id); setTimeout(() => coachAuto(a.id), 50); } } // le schede in vista si aggiornano da sole: una volta per sessione, al massimo 6 in automatico (le altre con «Aggiorna» o «Altro → Aggiorna il Coach»)
   h += `<div class="card main"><div class="row between"><div class="eyebrow">Da seguire</div><span class="tiny">${sits.length} situazioni aperte</span></div>${inVista.length ? inVista.map(a => situazioneHTML(a)).join("") : `<p class="muted">Nessuna situazione aperta. Scrivi un appunto qui sopra: lo organizzo io.</p>`}${altre.length ? `<details><summary>Tutte le situazioni (${altre.length} altre)</summary><div class="inner">${altre.map(a => situazioneHTML(a)).join("")}</div></details>` : ""}</div>`;
   if (principale) h += `<div class="card"><div class="eyebrow">Priorità di oggi</div>${impegnoHTML(principale)}</div>`;
   if (daVerificare.length) h += `<div class="card" style="border-color:var(--err)"><div class="eyebrow">Da verificare dopo una correzione</div>${daVerificare.map(impegnoHTML).join("")}</div>`;
@@ -320,9 +322,10 @@ function renderOggi() {
 function coachStato(a) { // "in_corso" | "da_aggiornare" | "ok" | "nessuno"
   if (a.coach_stato === "in_corso" && a.coach_richiesta && Date.now() - new Date(a.coach_richiesta.quando).getTime() < 4 * 60000) return "in_corso";
   if (!a.ultimo_coach) return "nessuno";
-  if (a.ultimo_coach.da_aggiornare || a.coach_stato === "in_corso" || a.coach_stato === "errore") return "da_aggiornare";
+  if (a.ultimo_coach.da_aggiornare || a.coach_stato === "in_corso" || a.coach_stato === "errore" || a.coach_stato === "superato") return "da_aggiornare";
   return "ok";
 }
+S.attenzione = new Map();
 function situazioniDaSeguire() {
   const t = today(); const sette = new Date(Date.now() - 7 * 86400000).toISOString();
   return argAperti().map(a => {
@@ -335,7 +338,7 @@ function situazioniDaSeguire() {
     if ((a.aggiornato || "") >= sette) p += 10;
     if (imps.some(i => i.tipo === "mia")) p += 5;
     return { a, p };
-  }).sort((x, y) => y.p - x.p || (y.a.aggiornato || "").localeCompare(x.a.aggiornato || "")).map(x => x.a);
+  }).sort((x, y) => y.p - x.p || (y.a.aggiornato || "").localeCompare(x.a.aggiornato || "")).map(x => { S.attenzione.set(x.a.id, x.p); return x.a; });
 }
 function situazioneHTML(a) {
   const uc = a.ultimo_coach || {}; const r = uc.r || {}; const cs = coachStato(a);
@@ -347,7 +350,7 @@ function situazioneHTML(a) {
   else if (cs === "ok" && uc.prossima_mossa) { mossa = "Proposta: " + uc.prossima_mossa; }
   else mossa = a.posso_aspettare ? "In attesa · puoi aspettare: " + a.posso_aspettare : "Nessuna mossa registrata";
   if (!pa && a.seguito_da) chi.push("segue " + a.seguito_da);
-  const stato = cs === "in_corso" ? `<span class="chip attesa"><span class="spin"></span> Coach in aggiornamento</span>` : cs === "da_aggiornare" ? `<span class="chip err">Da aggiornare</span>` : cs === "ok" ? `<span class="tiny">Coach ${fmtTs(uc.quando)}</span>` : "";
+  const stato = (cs === "in_corso" ? `<span class="chip attesa"><span class="spin"></span> Coach in aggiornamento</span>` : cs === "da_aggiornare" ? `<span class="chip err">${a.coach_stato === "superato" ? "Sintesi superata" : "Da aggiornare"}</span>` : cs === "ok" ? `<span class="tiny">Coach ${fmtTs(uc.quando)}</span>` : "") + (uc.contesto && uc.contesto.completo === false ? ` <span class="chip err">Contesto incompleto</span>` : "");
   const dire = cs === "ok" && (r.come_dirlo || "");
   return `<div class="card sit" data-sit="${a.id}" style="padding:12px 14px">
     <div class="row between"><h3>${esc(a.titolo)}</h3>${stato}</div>
@@ -356,7 +359,7 @@ function situazioneHTML(a) {
     ${dire ? `<div><span class="lbl">Cosa dire</span><div class="quote" style="padding:6px 10px">${esc(dire)}</div></div>` : ""}
     ${daVer.length ? `<div class="banner err" style="padding:6px 10px">Da verificare: ${daVer.map(i => esc(i.titolo) + (i.contraddizione ? " — " + esc(i.contraddizione) : "")).join(" · ")}</div>` : ""}
     <div class="row"><button class="primary small" data-agg>Aggiorna</button><button class="small quiet" data-apri>Approfondisci</button><button class="small quiet" data-altro>Altro</button></div>
-    <div data-sit-form></div><div data-sit-more hidden></div></div>`;
+    <div data-sit-form></div><div data-sit-more ${S.apertiSit.has(a.id) ? "" : "hidden"}>${S.apertiSit.has(a.id) ? situazioneMoreHTML(a) : ""}</div></div>`;
 }
 function testoSituazione(a) { // copia della scheda corrente; se la sintesi è precedente all'ultima novità lo dice in testa
   const uc = a.ultimo_coach || {}; const r = uc.r || {}; const cs = coachStato(a); const imps = impegniDi(a.id).filter(i => i.stato === "aperto"); const pa = imps.find(i => i.tipo === "mia");
@@ -375,6 +378,8 @@ function situazioneMoreHTML(a) {
   if (r.principio && r.principio.testo) h += `<div><span class="lbl">Lezione</span><div>${esc(r.principio.testo)}</div><div class="tiny">${esc(r.principio.fonte || "")}${r.principio.nesso ? " · " + esc(r.principio.nesso) : ""}</div></div>`;
   if (Array.isArray(r.alternative) && r.alternative.length) h += `<div><span class="lbl">Alternative</span>${lst(r.alternative)}</div>`;
   if ((a.ricerche || []).length) h += `<div><span class="lbl">Fonti online</span>${a.ricerche.slice(-3).reverse().map(x => `<div class="tiny">${fmtTs(x.quando)} · ${esc(x.domanda)} · ${(x.evidenze || []).length} fonti${x.stato_analisi === "da_aggiornare" ? " · da aggiornare" : ""}</div>`).join("")}</div>`;
+  if ((a.correlati || []).length) h += `<div><span class="lbl">Situazioni collegate</span>${a.correlati.map(c => `<div class="tiny"><button class="small quiet" data-corr="${esc(c.id)}">${esc(argTitolo(c.id) || "?")}</button> ${esc(c.perche || "")}</div>`).join("")}</div>`;
+  const inc = Array.from(new Set(note.flatMap(n => n.identita_incerte || []))); if (inc.length) h += `<div class="banner" style="padding:6px 10px"><b>Identità incerte nelle note</b>${lst(inc)}</div>`;
   h += `<div><span class="lbl">Storia</span>${aperti.length ? `<div class="list">${aperti.map(impegnoHTML).join("")}</div>` : ""}${fatti.length ? fatti.map(impegnoHTML).join("") : ""}${note.length ? note.map(n => notaHTML(n, a.id)).join("") : '<p class="muted">Nessuna nota collegata.</p>'}</div>`;
   if ((a.versioni || []).length) h += `<details class="flat"><summary class="tiny">Versioni della situazione (${a.versioni.length})</summary><div class="inner versions">${a.versioni.slice().reverse().slice(0, 12).map(v => `<div>${fmtTs(v.quando)} · ${esc(v.cosa)}</div>`).join("")}</div></details>`;
   return h + `</div>`;
@@ -383,7 +388,9 @@ function bindSituazioni(root) {
   $$("[data-sit]", root).forEach(el => {
     const a = S.argomenti.get(el.dataset.sit); if (!a) return;
     $("[data-agg]", el).addEventListener("click", () => apriFormAggiorna(a, $("[data-sit-form]", el)));
-    $("[data-apri]", el).addEventListener("click", () => { const box = $("[data-sit-more]", el); if (!box.hidden) { box.hidden = true; box.innerHTML = ""; return; } box.hidden = false; box.innerHTML = situazioneMoreHTML(a); bindImpegnoActions(box, "coach"); bindNotaActions(box); $("[data-sintesi]", el).classList.remove("clamp2"); });
+    const legaMore = (box) => { bindImpegnoActions(box, "coach"); bindNotaActions(box); bindParteActions(box); $$("[data-corr]", box).forEach(b => b.addEventListener("click", () => { S.coachArg = b.dataset.corr; lsSet("top_coach_arg", S.coachArg); S.coachOut = null; showView("coach"); renderCoachElenco(); renderCoachScheda(); })); };
+    const box0 = $("[data-sit-more]", el); if (!box0.hidden) { legaMore(box0); $("[data-sintesi]", el).classList.remove("clamp2"); }
+    $("[data-apri]", el).addEventListener("click", () => { const box = $("[data-sit-more]", el); if (!box.hidden) { box.hidden = true; box.innerHTML = ""; S.apertiSit.delete(a.id); return; } S.apertiSit.add(a.id); box.hidden = false; box.innerHTML = situazioneMoreHTML(a); bindImpegnoActions(box, "coach"); bindNotaActions(box); bindParteActions(box); $$("[data-corr]", box).forEach(b => b.addEventListener("click", () => { S.coachArg = b.dataset.corr; lsSet("top_coach_arg", S.coachArg); S.coachOut = null; showView("coach"); renderCoachElenco(); renderCoachScheda(); })); $("[data-sintesi]", el).classList.remove("clamp2"); });
     $("[data-altro]", el).addEventListener("click", () => {
       const f = $("[data-sit-form]", el); const pa = impegniDi(a.id).filter(i => i.stato === "aperto" && i.tipo === "mia")[0];
       f.innerHTML = `<div class="row">${pa ? `<button class="small" data-x="fatto">Fatto: ${esc(pa.titolo.slice(0, 40))}</button>` : ""}<button class="small" data-x="parlato">Ho parlato</button><button class="small quiet" data-x="coach">Aggiorna il Coach</button><button class="small quiet" data-x="apri">Apri nel Coach</button><button class="small quiet" data-x="copia">Copia</button><button class="small quiet" data-x="arch">Archivia</button><button class="small quiet" data-x="chiudi">Chiudi</button></div>`;
@@ -556,7 +563,7 @@ async function organizzaNota(n, opts) {
   const esistenti = Array.from(S.argomenti.values()).filter(a => a.stato !== "archiviato" || opts.argomentoForzato === a.id).map(a => ({ id: a.id, titolo: a.titolo, ambito: a.ambito, situazione: (a.situazione || "").slice(0, 160) }));
   const forzato = opts.argomentoForzato && S.argomenti.get(opts.argomentoForzato);
   const impAperti = forzato ? impegniDi(forzato.id).filter(i => i.stato === "aperto").map(i => ({ id: i.id, cosa: i.titolo, tipo: i.tipo, da_chi: i.da_chi, data: i.data })) : [];
-  const testo = opts.soloTesto || n.testo_originale || "";
+  const testo = opts.soloTesto || n.testo_originale || ""; const segs = segmentaTesto(testo); opts.segs = segs;
   const prompt = `${contestoBase()}
 
 Argomenti già aperti (usa l'id se la nota parla di uno di questi, anche se la nota è separata e arrivata dopo; altrimenti proponi un nuovo argomento con id null):
@@ -565,13 +572,14 @@ ${forzato ? `\nLa nota è stata scritta DENTRO la situazione «${forzato.titolo}
 Regole di separazione: UN ARGOMENTO = UNA SITUAZIONE. Lo stesso cliente con progetti, macchine, forniture o problemi diversi dà argomenti diversi: es. «Pointex – montaggio», «Pointex – aspirazione» e «C.F. – cantra» sono tre argomenti, mai uno solo «Pointex». Titolo: «Cliente o soggetto – oggetto». Non fondere; non duplicare un argomento esistente con un titolo diverso. "collegamento" è "sicuro" quando è evidente che si tratta di quell'argomento (o che è nuovo); è "ambiguo" solo se la scelta tra due argomenti (o tra esistente e nuovo) cambia davvero la situazione: in quel caso indica motivo e alternativa_id.
 Data certa della nota: ${n.data_nota}. "Oggi", "domani", "settimana prossima" si risolvono rispetto a questa data; se la data resta ambigua, metti data null e data_da_chiarire true.
 
+La nota è già spezzata in passaggi numerati [1], [2], …: per ogni argomento indica i NUMERI dei passaggi che lo riguardano (anche non consecutivi; un passaggio condiviso può stare in più argomenti). Non riscrivere il testo: il programma ricompone le parti copiando i passaggi originali. Ogni passaggio deve stare in almeno un argomento; se non appartiene a nessuno, lascialo fuori: resterà «senza argomento».
 <materiale>
-${String(testo).slice(0, 6000)}${(n.correzioni || []).length ? "\nCorrezioni di Luigi: " + n.correzioni.map(c => c.testo).join(" | ") : ""}
+${elencoPassaggi(segs)}${(n.correzioni || []).length ? "\nCorrezioni di Luigi: " + n.correzioni.map(c => c.testo).join(" | ") : ""}
 </materiale>
 
 Estrai in JSON, senza altro testo:
 {"sintesi":"una frase su cosa è successo",
- "argomenti":[{"id":"id esistente o null","titolo":"Cliente – oggetto","ambito":"progetti|italia|estero|altro","situazione":"situazione attuale in una o due frasi, solo da quanto scritto","cosa_cambia":"cosa cambia rispetto a prima, in una frase","seguito_da":"chi segue il passaggio attuale, o vuoto","posso_aspettare":"se Luigi può aspettare, fino a quale evento o data; altrimenti vuoto","estratto":"le frasi della nota che riguardano QUESTO argomento, copiate testualmente senza correggerle (più frammenti separati da ' … '); ogni frase della nota va in almeno un argomento","collegamento":"sicuro|ambiguo","motivo":"una riga: perché questo argomento esistente, o perché è nuovo","alternativa_id":"id dell'argomento con cui si potrebbe confondere, o null"}],
+ "argomenti":[{"id":"id esistente o null","titolo":"Cliente – oggetto","ambito":"progetti|italia|estero|altro","situazione":"situazione attuale in una o due frasi, solo da quanto scritto","cosa_cambia":"cosa cambia rispetto a prima, in una frase","seguito_da":"chi segue il passaggio attuale, o vuoto","posso_aspettare":"se Luigi può aspettare, fino a quale evento o data; altrimenti vuoto","passaggi":[1,2],"collegamento":"sicuro|ambiguo","motivo":"una riga: perché questo argomento esistente, o perché è nuovo","alternativa_id":"id dell'argomento con cui si potrebbe confondere, o null"}],
  "impegni":[{"argomento":0,"titolo":"cosa, concreto","tipo":"mia|attesa|altri","da_chi":"persona (per attesa/altri), o vuoto","data":"YYYY-MM-DD o null","data_da_chiarire":false}],
  "impegni_chiusi":[{"id":"id di un impegno aperto elencato sopra","esito":"una frase","sicuro":true}],
  "eventi":[{"titolo":"incontro, visita o trasferta","data":"YYYY-MM-DD","ora":"HH:MM o vuoto","modalita":"ufficio|clienti|trasferta","argomento":0}],
@@ -594,18 +602,20 @@ Estrai in JSON, senza altro testo:
 }
 async function applicaOrganizzazione(n, r, opts) {
   opts = opts || {}; const args = Array.isArray(r.argomenti) ? r.argomenti : []; const imps = Array.isArray(r.impegni) ? r.impegni : []; const evs = Array.isArray(r.eventi) ? r.eventi : []; const chiusi = Array.isArray(r.impegni_chiusi) ? r.impegni_chiusi : [];
+  const segs = opts.segs || segmentaTesto(opts.soloTesto || n.testo_originale || ""); const ric = ricostruisciParti(segs, args); // testo delle parti copiato dai passaggi originali
   const org = { quando: nowIso(), creati: { argomenti: [], impegni: [], eventi: [] }, aggiornati: [], chiusi: [] }; const argIds = []; const nomi = []; const parti = []; let ambigui = 0;
   for (let i = 0; i < args.length; i++) {
     const a = args[i]; const ex = a.id && S.argomenti.get(a.id); const amb = a.collegamento === "ambiguo" && !(opts.argomentoForzato && a.id === opts.argomentoForzato);
-    if (amb) { ambigui++; parti.push({ argomento_id: "", testo: String(a.estratto || "").slice(0, 4000), proposta: { id: ex ? a.id : null, titolo: a.titolo || "", ambito: a.ambito || "altro", situazione: a.situazione || "", cosa_cambia: a.cosa_cambia || "", motivo: a.motivo || "", alternativa_id: a.alternativa_id && S.argomenti.get(a.alternativa_id) ? a.alternativa_id : null, impegni: imps.filter(im => im.argomento === i) } }); continue; }
+    if (amb) { ambigui++; if (!ric.parti[i].indici.length) continue; parti.push({ argomento_id: "", testo: ric.parti[i].testo, passaggi: ric.parti[i].indici, proposta: { id: ex ? a.id : null, titolo: a.titolo || "", ambito: a.ambito || "altro", situazione: a.situazione || "", cosa_cambia: a.cosa_cambia || "", motivo: a.motivo || "", alternativa_id: a.alternativa_id && S.argomenti.get(a.alternativa_id) ? a.alternativa_id : null, impegni: imps.filter(im => im.argomento === i) } }); continue; }
     if (ex) { const cur = clone(ex); org.aggiornati.push({ id: cur.id, prima: Object.fromEntries(CAMPI_ARG.map(k => [k, clone(cur[k])])) }); cur.versioni = (cur.versioni || []).concat([{ quando: nowIso(), cosa: "Situazione: " + (cur.situazione || "—"), nota_id: n.id }]); if (a.situazione) cur.situazione = a.situazione; if (a.seguito_da) cur.seguito_da = a.seguito_da; cur.ultima_novita = { testo: a.cosa_cambia || a.situazione || "", data: n.data_nota }; if (a.posso_aspettare) cur.posso_aspettare = a.posso_aspettare; cur.aggiornato = nowIso(); cur.ultimo_riscontro = n.data_nota; await save("argomenti", cur.id, cur, { silent: true, noUndo: true, noRender: true }); argIds[i] = cur.id; nomi.push(cur.titolo); }
     else { const na = { id: uid(), titolo: a.titolo || "Senza titolo", ambito: AMBITI[a.ambito] ? a.ambito : "altro", situazione: a.situazione || "", seguito_da: a.seguito_da || "", ultima_novita: { testo: a.cosa_cambia || "", data: n.data_nota }, posso_aspettare: a.posso_aspettare || "", stato: "aperto", creato: nowIso(), aggiornato: nowIso(), ultimo_riscontro: n.data_nota, versioni: [], origine_nota_id: n.id }; await save("argomenti", na.id, na, { silent: true, noUndo: true, noRender: true }); argIds[i] = na.id; org.creati.argomenti.push(na.id); nomi.push(na.titolo + " (nuovo)"); }
-    if (a.estratto) parti.push({ argomento_id: argIds[i], testo: String(a.estratto).slice(0, 4000) });
+    if (ric.parti[i].indici.length) parti.push({ argomento_id: argIds[i], testo: ric.parti[i].testo, passaggi: ric.parti[i].indici });
   }
-  if (opts.argomentoForzato && !argIds.includes(opts.argomentoForzato) && !parti.some(p => p.argomento_id === opts.argomentoForzato)) { parti.unshift({ argomento_id: opts.argomentoForzato, testo: String(n.testo_originale || "").slice(0, 4000) }); argIds.push(opts.argomentoForzato); }
+  if (ric.nonAssegnati.length) { const t = ric.nonAssegnati.map(sg => sg.testo).join(" "); if (opts.argomentoForzato) parti.unshift({ argomento_id: opts.argomentoForzato, testo: t, passaggi: ric.nonAssegnati.map(sg => sg.i) }); else parti.push({ argomento_id: "", testo: t, passaggi: ric.nonAssegnati.map(sg => sg.i), non_assegnata: true }); } // nessun passaggio va perso
+  if (opts.argomentoForzato && !argIds.includes(opts.argomentoForzato)) argIds.push(opts.argomentoForzato);
   let nImp = 0;
-  for (const im of imps) { if (argIds[im.argomento] === undefined && args[im.argomento]) continue; if (!im.titolo) continue; const ni = { id: uid(), titolo: im.titolo, tipo: ["mia", "attesa", "altri"].includes(im.tipo) ? im.tipo : "mia", da_chi: im.da_chi || "", data: im.data || "", data_da_chiarire: !!im.data_da_chiarire, argomento_id: argIds[im.argomento] || opts.argomentoForzato || "", stato: "aperto", creato: nowIso(), origine_nota_id: n.id, versioni: [] }; await save("impegni", ni.id, ni, { silent: true, noUndo: true, noRender: true }); org.creati.impegni.push(ni.id); nImp++; }
-  for (const ev of evs) { if (!ev.data || (argIds[ev.argomento] === undefined && args[ev.argomento])) continue; const ne = { id: uid(), titolo: ev.titolo || "", data: ev.data, ora: ev.ora || "", ora_fine: "", modalita: ["ufficio", "clienti", "trasferta"].includes(ev.modalita) ? ev.modalita : "ufficio", argomento_id: argIds[ev.argomento] || opts.argomentoForzato || "", obiettivo: "", stimato: !ev.ora, creato: nowIso(), origine_nota_id: n.id }; await save("eventi", ne.id, ne, { silent: true, noUndo: true, noRender: true }); org.creati.eventi.push(ne.id); }
+  for (const im of imps) { if (argIds[im.argomento] === undefined && args[im.argomento]) continue; if (!im.titolo) continue; const ni = { id: uid(), titolo: im.titolo, tipo: ["mia", "attesa", "altri"].includes(im.tipo) ? im.tipo : "mia", da_chi: im.da_chi || "", data: im.data || "", data_da_chiarire: !!im.data_da_chiarire, argomento_id: argIds[im.argomento] || opts.argomentoForzato || "", stato: "aperto", creato: nowIso(), origine_nota_id: n.id, versioni: [] }; await save("impegni", ni.id, ni, { silent: true, noUndo: true, noRender: true }); org.creati.impegni.push({ id: ni.id, titolo: ni.titolo }); nImp++; }
+  for (const ev of evs) { if (!ev.data || (argIds[ev.argomento] === undefined && args[ev.argomento])) continue; const ne = { id: uid(), titolo: ev.titolo || "", data: ev.data, ora: ev.ora || "", ora_fine: "", modalita: ["ufficio", "clienti", "trasferta"].includes(ev.modalita) ? ev.modalita : "ufficio", argomento_id: argIds[ev.argomento] || opts.argomentoForzato || "", obiettivo: "", stimato: !ev.ora, creato: nowIso(), origine_nota_id: n.id }; await save("eventi", ne.id, ne, { silent: true, noUndo: true, noRender: true }); org.creati.eventi.push({ id: ne.id, titolo: ne.titolo }); }
   let nChiusi = 0;
   for (const c of chiusi) { const i = S.impegni.get(c.id); if (!i || i.stato !== "aperto" || c.sicuro === false) continue; const ni = clone(i); org.chiusi.push({ id: i.id, prima: { stato: i.stato, esito: i.esito || "", fatto_il: i.fatto_il || "" } }); ni.stato = "fatto"; ni.fatto_il = nowIso(); ni.esito = c.esito || ""; ni.principale = false; ni.versioni = (ni.versioni || []).concat([{ quando: nowIso(), cosa: "Fatto (dall'aggiornamento del " + fmtDate(n.data_nota) + ")" + (c.esito ? ": " + c.esito : ""), nota_id: n.id }]); await save("impegni", i.id, ni, { silent: true, noUndo: true, noRender: true }); nChiusi++; }
   const nn = clone(S.note.get(n.id) || n); const ids = argIds.filter(Boolean);
@@ -628,14 +638,25 @@ function mostraOrganizzazione(e) {
   $("#org-undo").addEventListener("click", async () => { box.hidden = true; await annullaOrganizzazione(S.note.get(e.n.id) || e.n); });
 }
 async function annullaOrganizzazione(n) {
+  // Annulla l'organizzazione automatica di una nota conservando la storia: rimuove solo ciò che è ancora com'era stato creato;
+  // impegni fatti/modificati/confermati, argomenti usati da altre note o modificati dopo, restano (e lo dicono nelle versioni).
   const org = n.organizzazione; if (!org) { toast("Niente da annullare"); return; }
-  for (const id of org.creati.impegni || []) if (S.impegni.get(id)) await del("impegni", id, { noUndo: true, label: "Annulla organizzazione" });
-  for (const id of org.creati.eventi || []) if (S.eventi.get(id)) await del("eventi", id, { noUndo: true, label: "Annulla organizzazione" });
-  for (const id of org.creati.argomenti || []) { const altre = Array.from(S.note.values()).some(x => x.id !== n.id && (x.argomento_ids || []).includes(id)); if (S.argomenti.get(id) && !altre) await del("argomenti", id, { noUndo: true, label: "Annulla organizzazione" }); }
-  for (const x of org.aggiornati || []) { const a = S.argomenti.get(x.id); if (!a) continue; const na = clone(a); Object.assign(na, x.prima); na.versioni = (na.versioni || []).concat([{ quando: nowIso(), cosa: "Annullato l'aggiornamento della nota del " + fmtDate(n.data_nota) }]); if (na.ultimo_coach) na.ultimo_coach.da_aggiornare = true; await save("argomenti", a.id, na, { silent: true, noUndo: true, noRender: true }); }
-  for (const x of org.chiusi || []) { const i = S.impegni.get(x.id); if (!i) continue; const ni = clone(i); Object.assign(ni, x.prima); ni.versioni = (ni.versioni || []).concat([{ quando: nowIso(), cosa: "Riaperto: annullata l'organizzazione" }]); await save("impegni", i.id, ni, { silent: true, noUndo: true, noRender: true }); }
-  const nn = clone(S.note.get(n.id) || n); nn.parti = []; delete nn.parte_resto; nn.argomento_ids = []; nn.analisi_stato = "nessuna"; delete nn.organizzazione; nn.analisi = ""; await save("note", n.id, nn, { label: "Annulla organizzazione" });
-  toast("Organizzazione annullata: la nota resta com'era scritta");
+  const idOf = x => typeof x === "string" ? x : x.id; const titoloOf = x => typeof x === "string" ? null : x.titolo;
+  const fresco = async (coll, id) => { if (!S.db) return mapOf(coll).get(id); try { const sn = await S.db.collection(coll).doc(id).get(); if (!sn.exists) { mapOf(coll).delete(id); return null; } const d = Object.assign({ id }, sn.data()); mapOf(coll).set(id, d); return d; } catch (e) { return mapOf(coll).get(id); } };
+  let rimossi = 0, conservati = 0; const quando = nowIso(); const segno = { quando, cosa: "Conservato all'annullamento dell'organizzazione della nota del " + fmtDate(n.data_nota) + " (era stato modificato dopo)" };
+  for (const x of org.creati.impegni || []) { const i = await fresco("impegni", idOf(x)); if (!i) continue; const intatto = i.stato === "aperto" && !(i.versioni || []).length && !i.da_verificare && !i.principale && !i.esito && (titoloOf(x) == null || titoloOf(x) === i.titolo); if (intatto) { await del("impegni", i.id, { noUndo: true, label: "Annulla organizzazione" }); rimossi++; } else { const ni = clone(i); ni.versioni = (ni.versioni || []).concat([segno]); await save("impegni", i.id, ni, { silent: true, noUndo: true, noRender: true }); conservati++; } }
+  for (const x of org.creati.eventi || []) { const e = await fresco("eventi", idOf(x)); if (!e) continue; if (!e.esito && (titoloOf(x) == null || titoloOf(x) === e.titolo) && !e.obiettivo) { await del("eventi", e.id, { noUndo: true, label: "Annulla organizzazione" }); rimossi++; } else conservati++; }
+  for (const id of org.creati.argomenti || []) { const a = await fresco("argomenti", id); if (!a) continue;
+    const altreNote = Array.from(S.note.values()).some(x => x.id !== n.id && (x.argomento_ids || []).includes(id)); const restano = Array.from(S.impegni.values()).some(i => i.argomento_id === id) || Array.from(S.eventi.values()).some(e => e.argomento_id === id);
+    const modificato = (a.versioni || []).some(v => v.cosa && !/^Situazione:/.test(v.cosa) && v.nota_id !== n.id) || a.stato === "archiviato" || (a.ricerche || []).length;
+    if (!altreNote && !restano && !modificato) { await del("argomenti", id, { noUndo: true, label: "Annulla organizzazione" }); rimossi++; }
+    else { const na = clone(a); na.versioni = (na.versioni || []).concat([segno]); await save("argomenti", a.id, na, { silent: true, noUndo: true, noRender: true }); conservati++; } }
+  for (const x of org.aggiornati || []) { const a = await fresco("argomenti", x.id); if (!a) continue; const vs = a.versioni || []; const mia = vs.findIndex(v => v.nota_id === n.id); const dopo = mia >= 0 ? vs.slice(mia + 1).filter(v => v.nota_id !== n.id && !/^Verifica online|^Annullato|^Conservato/.test(v.cosa || "")) : [];
+    if (dopo.length) { const na = clone(a); na.versioni = vs.concat([segno]); await save("argomenti", a.id, na, { silent: true, noUndo: true, noRender: true }); conservati++; continue; } // modificato dopo: non torno indietro
+    const na = clone(a); Object.assign(na, x.prima); na.versioni = vs.concat([{ quando, cosa: "Annullato l'aggiornamento della nota del " + fmtDate(n.data_nota) }]); if (na.ultimo_coach) na.ultimo_coach.da_aggiornare = true; await save("argomenti", a.id, na, { silent: true, noUndo: true, noRender: true }); coachAuto(a.id); }
+  for (const x of org.chiusi || []) { const i = await fresco("impegni", x.id); if (!i || i.stato !== "fatto") continue; const ni = clone(i); Object.assign(ni, x.prima); ni.versioni = (ni.versioni || []).concat([{ quando, cosa: "Riaperto: annullata l'organizzazione" }]); await save("impegni", i.id, ni, { silent: true, noUndo: true, noRender: true }); }
+  const nn = clone(S.note.get(n.id) || n); nn.organizzazioni_annullate = (nn.organizzazioni_annullate || []).concat([{ quando, organizzazione: org, parti: nn.parti || [], argomento_ids: nn.argomento_ids || [] }]); nn.parti = []; delete nn.parte_resto; nn.argomento_ids = []; nn.analisi_stato = "nessuna"; delete nn.organizzazione; nn.analisi = ""; await save("note", n.id, nn, { label: "Annulla organizzazione" });
+  toast("Organizzazione annullata: nota com'era scritta" + (rimossi ? " · " + rimossi + " elementi rimossi" : "") + (conservati ? " · " + conservati + " conservati perché modificati dopo" : ""));
 }
 // Collegamenti incerti: una scelta sola, con il motivo
 function decisioniAperte() { const out = []; for (const n of S.note.values()) (n.parti || []).forEach((p, i) => { if (p && !p.argomento_id && p.proposta) out.push({ n, p, i }); }); return out.sort((x, y) => (y.n.data_nota + y.n.creato).localeCompare(x.n.data_nota + x.n.creato)); }
@@ -661,7 +682,7 @@ async function decidiParte(n, i, scelta) {
   if (scelta.nuovo) { const na = { id: uid(), titolo: pr.titolo || "Senza titolo", ambito: AMBITI[pr.ambito] ? pr.ambito : "altro", situazione: pr.situazione || "", ultima_novita: { testo: pr.cosa_cambia || "", data: nn.data_nota }, stato: "aperto", creato: nowIso(), aggiornato: nowIso(), ultimo_riscontro: nn.data_nota, versioni: [], origine_nota_id: n.id }; await save("argomenti", na.id, na, { silent: true, noUndo: true, noRender: true }); id = na.id; if (nn.organizzazione) nn.organizzazione.creati.argomenti.push(id); }
   const a = S.argomenti.get(id); if (!a) return;
   if (!scelta.nuovo) { const cur = clone(a); if (nn.organizzazione) nn.organizzazione.aggiornati.push({ id: cur.id, prima: Object.fromEntries(CAMPI_ARG.map(k => [k, clone(cur[k])])) }); cur.versioni = (cur.versioni || []).concat([{ quando: nowIso(), cosa: "Situazione: " + (cur.situazione || "—"), nota_id: n.id }]); if (pr.situazione) cur.situazione = pr.situazione; cur.ultima_novita = { testo: pr.cosa_cambia || pr.situazione || p.testo.slice(0, 160), data: nn.data_nota }; cur.aggiornato = nowIso(); cur.ultimo_riscontro = nn.data_nota; if (cur.stato === "archiviato") { cur.stato = "aperto"; cur.versioni.push({ quando: nowIso(), cosa: "Riaperto da un collegamento" }); } await save("argomenti", cur.id, cur, { silent: true, noUndo: true, noRender: true }); }
-  for (const im of (pr.impegni || [])) { if (!im.titolo) continue; const ni = { id: uid(), titolo: im.titolo, tipo: ["mia", "attesa", "altri"].includes(im.tipo) ? im.tipo : "mia", da_chi: im.da_chi || "", data: im.data || "", data_da_chiarire: !!im.data_da_chiarire, argomento_id: id, stato: "aperto", creato: nowIso(), origine_nota_id: n.id, versioni: [] }; await save("impegni", ni.id, ni, { silent: true, noUndo: true, noRender: true }); if (nn.organizzazione) nn.organizzazione.creati.impegni.push(ni.id); }
+  for (const im of (pr.impegni || [])) { if (!im.titolo) continue; const ni = { id: uid(), titolo: im.titolo, tipo: ["mia", "attesa", "altri"].includes(im.tipo) ? im.tipo : "mia", da_chi: im.da_chi || "", data: im.data || "", data_da_chiarire: !!im.data_da_chiarire, argomento_id: id, stato: "aperto", creato: nowIso(), origine_nota_id: n.id, versioni: [] }; await save("impegni", ni.id, ni, { silent: true, noUndo: true, noRender: true }); if (nn.organizzazione) nn.organizzazione.creati.impegni.push({ id: ni.id, titolo: ni.titolo }); }
   p.argomento_id = id; delete p.proposta; nn.argomento_ids = Array.from(new Set((nn.argomento_ids || []).concat([id]))); nn.collegamenti = (nn.collegamenti || []).concat([{ quando: nowIso(), argomento_id: id, come: "scelta", parte: i }]);
   await save("note", n.id, nn, { label: "Collegamento deciso" }); toast("Collegata a «" + (argTitolo(id) || "") + "»", true); coachAuto(id);
 }
@@ -735,33 +756,92 @@ function lezioniContesto() {
   for (const l of lez) { out += `\n## ${l.titolo}${l.fonte ? " (" + l.fonte + ")" : ""}\n`; const pr = (l.principi || []).map(p => `- ${String(p.testo).slice(0, 500)}${p.riferimento ? " [" + p.riferimento + "]" : ""}${p.correzione ? " — CORREZIONE di Luigi (prevale): " + p.correzione : ""}`).join("\n"); out += pr || (l.testo || "").slice(0, 1200); if ((l.correzioni || []).length) out += "\nCorrezioni generali di Luigi (prevalgono): " + l.correzioni.map(c => c.testo).join(" | "); }
   return out.slice(0, 110000) + "\n</materiale>";
 }
+// v8: scrittura di pochi campi senza sovrascrivere il resto. Rilegge il documento dal server (versione seq), unisce SOLO i campi indicati e scrive con quel
+// seq come base: se nel frattempo un altro dispositivo ha scritto, il server risponde 409 e si riprova sulla versione nuova (mai «force»).
+async function scriviCampi(coll, id, campi, tentativi) {
+  const map = mapOf(coll);
+  if (!S.db) { const cur = map.get(id); if (!cur) return false; map.set(id, Object.assign({}, cur, campi, { modificato: nowIso() })); return true; }
+  const ref = S.db.collection(coll).doc(id);
+  for (let t = 0; t < (tentativi || 4); t++) {
+    const snap = await ref.get(); if (!snap.exists) return false;
+    const data = Object.assign({ id }, snap.data(), campi, { modificato: nowIso() });
+    try { await ref.set(data); map.set(id, data); return true; }
+    catch (e) { if (e && e.code === "conflict") { if (e.current && e.current.fonti_superate) throw { code: "fonti_superate", cambiate: e.current.cambiate || [] }; continue; } throw e; }
+  }
+  return false;
+}
 // v8: il Coach si aggiorna da solo dopo ogni nota, correzione o esito. Una risposta vecchia non sovrascrive mai una più nuova (contatore per argomento).
 S.coachGen = {}; S.coachInCorso = new Set(); let coachCoda = Promise.resolve();
+// v8.2: ogni risposta del Coach è legata a un'IMPRONTA delle sue fonti (argomento, note con parti e rettifiche, impegni), presa quando il prompt
+// viene costruito. Prima di accettare la risposta, le fonti vengono rilette dal SERVER e confrontate: se una è cambiata (anche da un altro
+// dispositivo), la risposta è salvata come «superata» (da_aggiornare, coach_stato "superato"), non tocca gli impegni e viene richiesta di nuovo.
+// In più il server, se la scrittura porta le versioni (seq) delle fonti, le verifica atomicamente e rifiuta con 409 «fonti_superate».
+function hashTesto(t) { let h = 2166136261; const s = String(t); for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); }
+function improntaArgomento(a) { return hashTesto(JSON.stringify([a.titolo, a.situazione, a.ultima_novita, a.seguito_da, a.posso_aspettare, a.stato, a.ultimo_riscontro, a.correlati])); }
+function improntaNota(n) { return hashTesto(JSON.stringify([n.testo_originale, n.data_nota, n.parti, n.correzioni, n.argomento_ids, n.identita_incerte, n.tipo])); }
+function improntaImpegni(list) { return hashTesto(JSON.stringify(list.map(i => [i.id, i.titolo, i.tipo, i.da_chi, i.data, i.stato, i.esito, i.da_verificare]))); }
+function fontiCoach(a) { const note = noteDiArgomento(a.id); const imps = impegniDi(a.id); return [{ coll: "argomenti", id: a.id, h: improntaArgomento(a) }].concat(note.map(n => ({ coll: "note", id: n.id, h: improntaNota(n) })), [{ coll: "impegni", id: "*" + a.id, h: improntaImpegni(imps) }]); }
+async function fontiCambiate(fonti) { // rilegge dal server ogni fonte e dice quali sono cambiate rispetto all'impronta (gli impegni si confrontano sulla copia locale aggiornata dal polling)
+  const cambiate = []; const seqs = [];
+  for (const f of fonti) {
+    if (f.coll === "impegni") { const aId = f.id.slice(1); if (improntaImpegni(impegniDi(aId)) !== f.h) cambiate.push(f); continue; }
+    let d = mapOf(f.coll).get(f.id), seq;
+    if (S.db) { try { const sn = await S.db.collection(f.coll).doc(f.id).get(); d = sn.exists ? Object.assign({ id: f.id }, sn.data()) : null; seq = sn.seq; } catch (e) {} }
+    if (!d) { cambiate.push(f); continue; }
+    const h = f.coll === "argomenti" ? improntaArgomento(d) : improntaNota(d); if (h !== f.h) cambiate.push(f); if (seq !== undefined) seqs.push({ coll: f.coll, id: f.id, seq });
+  }
+  return { cambiate, seqs };
+}
 function coachAuto(argId, opts) {
   opts = opts || {}; if (!S.sample || !S.argomenti.get(argId)) return Promise.resolve(false);
   const g = (S.coachGen[argId] || 0) + 1; S.coachGen[argId] = g;
-  const a0 = S.argomenti.get(argId); const na0 = clone(a0); na0.coach_stato = "in_corso"; na0.coach_richiesta = { gen: g, quando: nowIso() }; if (na0.ultimo_coach) na0.ultimo_coach.da_aggiornare = true;
-  const avvio = save("argomenti", argId, na0, { silent: true, noUndo: true, force: true });
+  const a0 = S.argomenti.get(argId); const uc0 = a0.ultimo_coach ? Object.assign({}, a0.ultimo_coach, { da_aggiornare: true }) : undefined;
+  const avvio = scriviCampi("argomenti", argId, Object.assign({ coach_stato: "in_corso", coach_richiesta: { gen: g, quando: nowIso() } }, uc0 ? { ultimo_coach: uc0 } : {})).then(() => renderAll());
   const run = async () => {
     await avvio; if (S.coachGen[argId] !== g) return false; // è già partita una richiesta più nuova
     const a = S.argomenti.get(argId); if (!a) return false;
+    const fonti = fontiCoach(a); const prompt = promptCoach(a); const contesto = S.contestoCoach[argId] || {};
     let r;
-    try { r = await S.sample.json(promptCoach(a), { cache: false }); }
-    catch (e) { if (S.coachGen[argId] !== g) return false; const ne = clone(S.argomenti.get(argId) || a); ne.coach_stato = "errore"; ne.coach_errore = (e && e.code) || "errore"; await save("argomenti", argId, ne, { silent: true, noUndo: true, force: true }); if (opts.forza) toast("Il Coach non ha risposto (" + ne.coach_errore + "): i dati sono salvi, la scheda resta «da aggiornare»"); return false; }
-    if (S.coachGen[argId] !== g) return false; // risposta superata da una richiesta più nuova: non sovrascrive
-    const cur = S.argomenti.get(argId); if (!cur) return false; const na = clone(cur);
-    na.ultimo_coach = { quando: nowIso(), in_breve: r.in_breve || "", prossima_mossa: r.prossima_mossa || "", da_aggiornare: false, r }; na.coach_stato = "ok"; delete na.coach_errore;
-    if (r.posso_aspettare && r.posso_aspettare.si && r.posso_aspettare.fino_a) na.posso_aspettare = r.posso_aspettare.fino_a;
-    await save("argomenti", argId, na, { silent: true, noUndo: true, force: true });
-    // impegni contraddetti: segnalati, mai modificati in silenzio
-    for (const c of (Array.isArray(r.impegni_contraddetti) ? r.impegni_contraddetti : [])) { const i = S.impegni.get(c.id); if (!i || i.stato !== "aperto" || i.argomento_id !== argId || i.da_verificare) continue; const ni = clone(i); ni.da_verificare = true; ni.contraddizione = String(c.perche || "").slice(0, 300); if (c.testo_proposto) ni.testo_proposto = c.testo_proposto; ni.versioni = (ni.versioni || []).concat([{ quando: nowIso(), cosa: "Segnalato contraddetto dal Coach: " + ni.contraddizione }]); await save("impegni", i.id, ni, { silent: true, noUndo: true, noRender: true }); }
-    if (S.coachArg === argId) { S.coachOut = { r, quando: na.ultimo_coach.quando, arg: argId }; }
+    try { r = await S.sample.json(prompt, { cache: false }); }
+    catch (e) { if (S.coachGen[argId] !== g) return false; const cod = (e && e.code) || "errore"; await scriviCampi("argomenti", argId, { coach_stato: "errore", coach_errore: cod }); renderAll(); if (opts.forza) toast("Il Coach non ha risposto (" + cod + "): i dati sono salvi, la scheda resta «da aggiornare»"); return false; }
+    if (S.coachGen[argId] !== g) return false; // risposta superata da una richiesta più nuova in questo browser: non sovrascrive
+    if (!S.argomenti.get(argId)) return false;
+    const ver = await fontiCambiate(fonti); const superata = ver.cambiate.length > 0;
+    const ultimo = { quando: nowIso(), in_breve: r.in_breve || "", prossima_mossa: r.prossima_mossa || "", da_aggiornare: superata, r, contesto: { completo: contesto.completo !== false, note_incluse: (contesto.note_incluse || []).length, note_escluse: contesto.note_escluse || [] }, fonti: ver.seqs };
+    if (superata) { // la risposta è nata su dati che nel frattempo sono cambiati (anche da un altro dispositivo): resta come «precedente», poi si riprova
+      ultimo.superata_per = ver.cambiate.map(f => f.coll + " " + f.id);
+      const riprovo = S.coachGen[argId] === g && !opts.riprova; // una sola ripetizione automatica: se cambia ancora, resta «superata» finché la tocchi
+      await scriviCampi("argomenti", argId, { ultimo_coach: ultimo, coach_stato: riprovo ? "in_corso" : "superato" }); renderAll();
+      if (riprovo) setTimeout(() => { coachAuto(argId, { riprova: true }).catch(() => {}); }, 300);
+      return false;
+    }
+    const campi = { ultimo_coach: ultimo, coach_stato: "ok", coach_errore: undefined };
+    if (r.posso_aspettare && r.posso_aspettare.si && r.posso_aspettare.fino_a) campi.posso_aspettare = r.posso_aspettare.fino_a;
+    let esito; try { esito = await scriviCampi("argomenti", argId, campi); } catch (e) { if (e && e.code === "fonti_superate") { ultimo.da_aggiornare = true; ultimo.superata_per = (e.cambiate || []).map(f => f.coll + " " + f.id); await scriviCampi("argomenti", argId, { ultimo_coach: Object.assign({}, ultimo, { fonti: undefined }), coach_stato: "superato" }); renderAll(); if (S.coachGen[argId] === g && !opts.riprova) setTimeout(() => { coachAuto(argId, { riprova: true }).catch(() => {}); }, 300); return false; } throw e; }
+    if (!esito) return false;
+    // impegni contraddetti: segnalati, mai modificati in silenzio (solo per una risposta valida)
+    for (const c of (Array.isArray(r.impegni_contraddetti) ? r.impegni_contraddetti : [])) { const i = S.impegni.get(c.id); if (!i || i.stato !== "aperto" || i.argomento_id !== argId || i.da_verificare) continue; const contr = String(c.perche || "").slice(0, 300); await scriviCampi("impegni", i.id, Object.assign({ da_verificare: true, contraddizione: contr, versioni: (i.versioni || []).concat([{ quando: nowIso(), cosa: "Segnalato contraddetto dal Coach: " + contr }]) }, c.testo_proposto ? { testo_proposto: c.testo_proposto } : {})); }
+    if (S.coachArg === argId) { S.coachOut = { r, quando: ultimo.quando, arg: argId }; }
     renderAll(); return true;
   };
-  coachCoda = coachCoda.then(run, run); return coachCoda;
+  const esecuzione = coachCoda.then(run, run).catch(e => { console.error("coach", e); return false; }); coachCoda = esecuzione; return esecuzione;
+}
+// v8.2: il Coach riceve TUTTI i passaggi che riguardano l'argomento (tutte le parti, nessun taglio di frase, tutte le rettifiche), dalla nota più recente
+// alla più vecchia. Il limite di contesto è esplicito: se il materiale supera il bilancio, restano fuori le note PIÙ VECCHIE per intero e la cosa viene
+// dichiarata nel prompt e salvata con la risposta (contesto incompleto), mai tagliata in silenzio a metà frase.
+const COACH_BILANCIO = 60000; S.contestoCoach = {};
+function noteDiArgomento(aId) { return Array.from(S.note.values()).filter(n => (n.argomento_ids || []).includes(aId) || (n.parti || []).some(p => p.argomento_id === aId)).sort((x, y) => (y.data_nota + (y.creato || "")).localeCompare(x.data_nota + (x.creato || ""))); }
+function bloccoNota(n, aId) {
+  const parti = Array.isArray(n.parti) ? n.parti.filter(p => p.argomento_id === aId && p.testo) : [];
+  const corpo = parti.length ? parti.map((p, k) => (parti.length > 1 ? `(passaggio ${k + 1} di ${parti.length}) ` : "") + String(p.testo)).join("\n") : String(n.testo_originale || "");
+  return `[${n.data_nota}${n.tipo !== "nota" ? " · " + n.tipo : ""}${parti.length ? " · passaggi che riguardano questo argomento" : ""}${n.creato ? " · scritta " + String(n.creato).slice(0, 10) : ""}] ${corpo}${(n.correzioni || []).length ? "\n  — RETTIFICHE di Luigi (prevalgono sul testo sopra): " + n.correzioni.map(c => `[${String(c.quando || "").slice(0, 10)}] ${c.testo}`).join(" | ") : ""}${(n.identita_incerte || []).length ? "\n  — identità incerte segnalate: " + n.identita_incerte.join(" · ") : ""}`;
 }
 function promptCoach(a) {
-  const imps = impegniDi(a.id); const note = Array.from(S.note.values()).filter(n => (n.argomento_ids || []).includes(a.id)).sort((x, y) => (y.data_nota + y.creato).localeCompare(x.data_nota + x.creato)).slice(0, 8);
+  const imps = impegniDi(a.id); const tutte = noteDiArgomento(a.id);
+  const blocchi = tutte.map(n => ({ id: n.id, testo: bloccoNota(n, a.id) })); let usato = 0; const incluse = [], escluse = [];
+  for (const b of blocchi) { if (usato + b.testo.length <= COACH_BILANCIO || !incluse.length) { incluse.push(b); usato += b.testo.length; } else escluse.push(b.id); }
+  const note = incluse; S.contestoCoach[a.id] = { note_incluse: incluse.map(b => b.id), note_escluse: escluse, completo: !escluse.length };
+  const avviso = escluse.length ? `\nCONTESTO INCOMPLETO: ${escluse.length} note più vecchie non sono incluse per limite di spazio (${escluse.length} su ${tutte.length}). Dillo in "rischio" e non presentare l'analisi come completa.\n` : "";
   return `${contestoBase()}
 
 Oggi è ${today()}.
@@ -770,9 +850,9 @@ Situazione attuale: ${a.situazione || "—"}
 Ultima novità: ${(a.ultima_novita && a.ultima_novita.testo) || "—"} (${(a.ultima_novita && a.ultima_novita.data) || ""})
 Chi segue il passaggio: ${a.seguito_da || "non indicato"}. Ultimo riscontro: ${a.ultimo_riscontro || "non datato"}.
 Impegni (aperti e chiusi): ${JSON.stringify(imps.map(i => ({ id: i.id, cosa: i.titolo, tipo: i.tipo, da_chi: i.da_chi, data: i.data, stato: i.stato, esito: i.esito })))}
-Note recenti di Luigi (dalla più recente), con data:
+Note di Luigi su questo argomento (${note.length}${escluse.length ? " incluse su " + tutte.length : ""}, dalla più recente; ogni nota può avere più passaggi, anche non consecutivi; una rettifica più recente prevale sul testo che corregge):${avviso}
 <materiale>
-${note.map(n => { const parte = Array.isArray(n.parti) ? n.parti.find(p => p.argomento_id === a.id && p.testo) : null; return `[${n.data_nota}${n.tipo !== "nota" ? " · " + n.tipo : ""}${parte ? " · parte che riguarda questo argomento" : ""}] ${String(parte ? parte.testo : n.testo_originale).slice(0, 900)}${(n.correzioni || []).length ? " — correzioni: " + n.correzioni.map(c => c.testo).join(" | ") : ""}`; }).join("\n") || "nessuna"}
+${note.map(b => b.testo).join("\n") || "nessuna"}
 </materiale>
 
 ${lezioniContesto()}
@@ -811,7 +891,8 @@ function renderCoachOut(c) {
   const argC = S.argomenti.get(c.arg); const superata = !!(argC && argC.ultimo_coach && argC.ultimo_coach.da_aggiornare);
   out.innerHTML = `<div class="coach-out card" style="border-color:var(--accent)">
     <div class="tiny">Coach · ${fmtTs(c.quando)}</div>
-    ${superata ? (coachStato(argC) === "in_corso" ? `<div class="banner"><span><span class="spin"></span> Sintesi precedente all'ultima novità: il Coach si sta aggiornando.</span></div>` : `<div class="banner err">Da aggiornare: dopo questa sintesi c'è stata una novità o una correzione. Premi «Chiedi al Coach».</div>`) : ""}
+    ${superata ? (coachStato(argC) === "in_corso" ? `<div class="banner"><span><span class="spin"></span> Sintesi precedente all'ultima novità: il Coach si sta aggiornando.</span></div>` : `<div class="banner err">${argC.coach_stato === "superato" ? "Sintesi superata: mentre il Coach rispondeva sono cambiate le sue fonti (" + esc(((argC.ultimo_coach || {}).superata_per || []).join(", ")) + "). È conservata come precedente; premi «Chiedi al Coach»." : "Da aggiornare: dopo questa sintesi c'è stata una novità o una correzione. Premi «Chiedi al Coach»."}</div>`) : ""}
+    ${argC && argC.ultimo_coach && argC.ultimo_coach.contesto && argC.ultimo_coach.contesto.completo === false ? `<div class="banner">Contesto incompleto: ${argC.ultimo_coach.contesto.note_escluse.length} note più vecchie non sono entrate nel ragionamento per limite di spazio.</div>` : ""}
     ${r.istruzioni_sospette ? `<div class="banner err">Nel materiale c'erano frasi rivolte all'assistente: ignorate.</div>` : ""}
     <div class="blk"><div class="eyebrow">In breve</div><div>${esc(r.in_breve)}</div></div>
     ${r.cosa_cambia ? `<div class="blk"><div class="eyebrow">Cosa cambia</div><div>${esc(r.cosa_cambia)}</div></div>` : ""}
@@ -983,13 +1064,12 @@ function renderVerifica(a, r, appena) {
 }
 // correzioni: segna «da aggiornare» solo le ricerche che hanno usato quel materiale
 async function segnaRicercheDipendenti(tipo, id) {
-  for (const a0 of Array.from(S.argomenti.values())) {
-    // rilegge dal server: il server può aver appena salvato una ricerca su questo argomento
-    let a = a0; if (S.db) { try { const d = await S.db.collection("argomenti").doc(a0.id).get(); if (d.exists) a = Object.assign({ id: a0.id }, d.data()); } catch (e) {} }
+  // Il server segna già «da aggiornare» le verifiche online che usavano la nota o la lezione corretta (v6). Qui aggiorno solo la copia locale
+  // degli argomenti che hanno verifiche salvate, con una scrittura di soli campi (niente rilettura di tutto l'archivio, niente «force»).
+  for (const a of Array.from(S.argomenti.values())) {
     if (!Array.isArray(a.ricerche) || !a.ricerche.length) continue;
-    let cambia = false; const na = clone(a);
-    na.ricerche = na.ricerche.map(r => { const usa = r.usa || {}; const dip = tipo === "nota" ? (usa.note || []).some(n => n.id === id) : (usa.lezioni || []).some(l => l.id === id); if (dip && r.stato_analisi !== "da_aggiornare") { cambia = true; return Object.assign({}, r, { stato_analisi: "da_aggiornare", da_aggiornare_per: tipo + " " + id + " corretta il " + nowIso() }); } return r; });
-    if (cambia) { S.argomenti.set(a.id, na); await save("argomenti", a.id, na, { silent: true, noUndo: true, noRender: true, force: true }); }
+    const ric = a.ricerche.map(r => { const usa = r.usa || {}; const dip = tipo === "nota" ? (usa.note || []).some(n => n.id === id) : (usa.lezioni || []).some(l => l.id === id); return dip && r.stato_analisi !== "da_aggiornare" ? Object.assign({}, r, { stato_analisi: "da_aggiornare", da_aggiornare_per: tipo + " " + id + " corretta il " + nowIso() }) : r; });
+    if (JSON.stringify(ric) !== JSON.stringify(a.ricerche)) await scriviCampi("argomenti", a.id, { ricerche: ric });
   }
 }
 
@@ -1104,8 +1184,9 @@ function parteHTML(n, p, i, q) {
     ${p.proposta ? `<div class="tiny">Collegamento incerto${p.proposta.motivo ? ": " + esc(p.proposta.motivo) : ""} — decidi nel Piano («Da decidere») o qui con «Collega a…».</div>` : ""}
     ${(n.correzioni || []).length ? `<div class="versions">${n.correzioni.map(c => `<div>${fmtTs(c.quando)} · ${q ? evidenzia(c.testo, q) : esc(c.testo)}</div>`).join("")}</div>` : ""}
     <div class="row" data-parte-actions></div>
-    <div data-parte-intera></div></div></div>`;
+    <div data-parte-intera>${S.apertiIntere.has(n.id + ":" + i) ? `<div class="eyebrow" style="margin-top:8px">Nota intera (originale)</div>` + notaHTML(n) : ""}</div></div></div>`;
 }
+S.apertiIntere = new Set(); S.apertiSit = new Set();
 function selectArgomenti(escludi) { const opts = Array.from(S.argomenti.values()).filter(a => a.id !== escludi).sort((x, y) => (x.stato === "archiviato") - (y.stato === "archiviato") || x.titolo.localeCompare(y.titolo)); return `<select data-sel>${opts.map(a => `<option value="${a.id}">${esc(a.titolo)}${a.stato === "archiviato" ? " (archiviato)" : ""}</option>`).join("")}</select>`; }
 function bindParteActions(root) {
   $$("[data-parte]", root).forEach(el => {
@@ -1147,8 +1228,11 @@ function bindParteActions(root) {
         if (S.sample) await classificaParti(S.note.get(n.id) || nn, nuovi);
       });
     });
+    if (i >= 0 && S.sample && (segmentaTesto(p.testo).length >= 2 || String(p.testo).length >= 60)) mk("Dividi in situazioni", async () => { acts.innerHTML = `<span class="tiny"><span class="spin"></span> Divido questa parte in situazioni…</span>`; try { const res = await dividiInSituazioni(S.note.get(n.id) || n, i); mostraRisultatoDivisione(res); } catch (e) { toast("Divisione non riuscita (" + (e && e.code || "errore") + ")"); renderAll(); } });
+    if (i >= 0 && segmentaTesto(p.testo).length >= 2) mk("Seleziona frasi…", () => apriSelezioneFrasi(n, i, acts));
     mk("Copia", () => copyText(p.testo));
-    mk("Nota intera", () => { const box = $("[data-parte-intera]", el); if (box.innerHTML) { box.innerHTML = ""; return; } box.innerHTML = `<div class="eyebrow" style="margin-top:8px">Nota intera (originale)</div>` + notaHTML(n); bindNotaActions(box); });
+    const boxI = $("[data-parte-intera]", el); if (boxI.innerHTML) bindNotaActions(boxI);
+    mk("Nota intera", () => { const k = n.id + ":" + i; if (boxI.innerHTML) { boxI.innerHTML = ""; S.apertiIntere.delete(k); return; } S.apertiIntere.add(k); boxI.innerHTML = `<div class="eyebrow" style="margin-top:8px">Nota intera (originale)</div>` + notaHTML(n); bindNotaActions(boxI); });
   });
 }
 // Collega da sola le parti indicate (dopo «Separa»): esistente o nuovo se sicuro; «da decidere» se ambiguo
@@ -1179,13 +1263,149 @@ Rispondi solo con JSON: {"frammenti":[{"indice":0,"id":"esistente o null","titol
   } catch (e) { toast("Parti separate; collegamento automatico non riuscito (" + (e && e.code || "errore") + "): usa «Collega a…»"); }
 }
 
+// ---------- v8.1: DIVIDI IN SITUAZIONI (note e parti già salvate), selezione di frasi, annullamento ----------
+function frasiDi(testo) { // frasi: a capo, oppure . ; ! ? seguiti da spazio — tranne dopo una sigla a lettere singole («C.F.»), un numero di elenco («1.») o un'abbreviazione («n.», «pag.», «es.»)
+  const out = []; const t = String(testo || ""); const re = /[.;!?]+(\s+|$)|\n+/g; let last = 0, m;
+  while ((m = re.exec(t))) { const fine = m.index + m[0].length; if (!/\n/.test(m[0])) { const prima = t.slice(last, m.index); const parola = (prima.match(/(\S+)$/) || ["", ""])[1]; if (/^(\p{L}\.?)+$/u.test(parola) && parola.replace(/\./g, "").length <= 2 || /^\d$/.test(parola) || /^(n|nr|art|pag|pagg|dott|sig|ing|es|ecc|tel|cod|rif|ca|cfr)$/i.test(parola)) continue; } out.push(t.slice(last, fine)); last = fine; }
+  out.push(t.slice(last)); return out.map(x => x.trim()).filter(Boolean); }
+// v8.2: conservazione ESATTA. Il testo viene spezzato in passaggi numerati; il modello indica i numeri, il programma ricompone le parti copiando
+// i passaggi dall'originale (numeri, negazioni, sigle e condizioni restano per costruzione). Un passaggio non assegnato resta «Senza argomento» con il suo testo esatto.
+const normEsatta = t => String(t || "").normalize("NFC").replace(/\s+/g, " ").trim();
+function coperta(frase, estratti) { // vero solo se la frase compare TESTUALMENTE (a meno di spazi) in un estratto, o un estratto è contenuto nella frase e la copre per intero
+  const f = normEsatta(frase); if (!f) return true; return (estratti || []).some(e => { const x = normEsatta(e); return x.includes(f); });
+}
+function segmentaTesto(testo) { // passaggi numerati: frasi; una frase molto lunga (>320 caratteri) viene spezzata a virgole/punti e virgola per restare maneggevole
+  const out = []; for (const f of frasiDi(testo)) { if (f.length <= 320) { out.push(f); continue; } let resto = f; while (resto.length > 320) { let k = -1; for (const re of [/[;,]\s(?=[^,;]*$)/, /[;,]\s/g]) { let m; const idxs = []; const r2 = new RegExp(re.source, "g"); while ((m = r2.exec(resto)) && m.index < 320) idxs.push(m.index + m[0].length); if (idxs.length) { k = idxs[idxs.length - 1]; break; } } if (k < 40) { k = resto.lastIndexOf(" ", 320); if (k < 40) k = 320; } out.push(resto.slice(0, k).trim()); resto = resto.slice(k).trim(); } if (resto) out.push(resto); }
+  return out.map((t, i) => ({ i: i + 1, testo: t }));
+}
+function indiciDaEstratto(estratto, segs) { // compatibilità: se il modello ha copiato il testo invece dei numeri, riconosce SOLO i passaggi presenti testualmente (niente testo riscritto)
+  const e = normEsatta(estratto); const out = []; for (const sg of segs) { const t = normEsatta(sg.testo); if (t && e.includes(t)) out.push(sg.i); } return out;
+}
+function ricostruisciParti(segs, situazioni) { // → [{indici, testo}] per situazione + indici non assegnati; il testo è SEMPRE copiato dai passaggi originali
+  const usati = new Set(); const parti = situazioni.map(x => { let idx = Array.isArray(x.passaggi) ? x.passaggi.map(Number).filter(k => segs.some(sg => sg.i === k)) : []; if (!idx.length && x.estratto) idx = indiciDaEstratto(x.estratto, segs); idx = Array.from(new Set(idx)).sort((a, b) => a - b); idx.forEach(k => usati.add(k)); return { indici: idx, testo: idx.map(k => segs[k - 1].testo).join(" ") }; });
+  const nonAssegnati = segs.filter(sg => !usati.has(sg.i)); return { parti, nonAssegnati };
+}
+function elencoPassaggi(segs) { return segs.map(sg => `[${sg.i}] ${sg.testo}`).join("\n"); }
+async function dividiInSituazioni(n, idx, opts) { // idx = null → nota intera; idx = indice di una parte → ridivide quella parte
+  opts = opts || {}; if (!S.sample) { toast("Divisione non disponibile qui"); return null; }
+  const testo = idx == null ? n.testo_originale : ((n.parti || [])[idx] || {}).testo; if (!testo) return null;
+  const segs = segmentaTesto(testo); if (!segs.length) return null;
+  const esistenti = Array.from(S.argomenti.values()).map(a => ({ id: a.id, titolo: a.titolo, stato: a.stato === "archiviato" ? "archiviato" : "aperto", situazione: (a.situazione || "").slice(0, 120) }));
+  const prompt = `${contestoBase()}
+
+Argomenti già esistenti (riusa l'id quando il passaggio riguarda davvero quella situazione, anche se archiviata; altrimenti id null):
+${JSON.stringify(esistenti)}
+
+Compito: DIVIDI IN SITUAZIONI il testo qui sotto, che è già spezzato in passaggi numerati [1], [2], … (data della nota ${n.data_nota}). Una situazione = un lavoro distinto: un progetto, una prova, una macchina o un articolo, una questione commerciale. Il numero di situazioni lo decide il significato, non un numero fisso. Non raggruppare passaggi diversi solo perché compare la stessa persona (es. Matteo, Emilio) o lo stesso cliente: «montaggio Pointex» e «aspirazione Pointex» sono due situazioni. Non dividere una stessa questione in più pezzi: più dettagli sullo stesso preventivo restano insieme. Titolo: «Cliente o soggetto – oggetto», breve.
+Per ogni situazione indica i NUMERI dei passaggi che la riguardano (anche non consecutivi; un passaggio condiviso può stare in più situazioni). Non riscrivere il testo: il programma lo ricompone copiando i passaggi originali, quindi numeri, condizioni («se», «entro», «non», «da confermare») e informazioni mancanti restano come sono. Ogni passaggio deve stare in almeno una situazione; se uno non appartiene a nessun lavoro riconoscibile, lascialo fuori: resterà «senza argomento». Non identificare sigle simili tra loro (CI4 ≠ C4, CMO ≠ CMOE, 33 ≠ 34): se un passaggio potrebbe riferirsi a due macchine o articoli diversi, mettilo in "identita_incerte". Niente impegni, date o compiti: questa è organizzazione di informazioni. Se due situazioni distinte sono utilmente collegate (stessa fornitura, stesso cliente con dipendenza reale), indicalo in "collegamenti" con il perché, senza fonderle.
+"collegamento" è "sicuro" se è evidente che il passaggio riguarda quell'argomento esistente (o che è nuovo); "ambiguo" se la scelta tra due argomenti cambia davvero la situazione (indica motivo e alternativa_id).
+
+<materiale>
+${elencoPassaggi(segs)}
+</materiale>
+
+Rispondi solo con JSON:
+{"situazioni":[{"id":"esistente o null","titolo":"Cliente – oggetto","ambito":"progetti|italia|estero|altro","situazione":"una o due frasi, solo da quanto scritto","passaggi":[1,2],"collegamento":"sicuro|ambiguo","motivo":"una riga","alternativa_id":null}],
+ "identita_incerte":["es. «CI4» potrebbe essere la CI4 di Lutex o un'altra macchina: non unito"],
+ "collegamenti":[{"a":0,"b":1,"perche":"una riga"}],
+ "istruzioni_sospette":false}`;
+  const r = await S.sample.json(prompt, { cache: false });
+  const sits0 = (Array.isArray(r.situazioni) ? r.situazioni : []).filter(x => x && (Array.isArray(x.passaggi) || x.estratto));
+  const ric = ricostruisciParti(segs, sits0); const sits = sits0.filter((x, i) => ric.parti[i].indici.length); const testi = ric.parti.filter(p => p.indici.length);
+  const nn = clone(S.note.get(n.id) || n); const prev = { parti: clone(nn.parti || []), argomento_ids: clone(nn.argomento_ids || []), parte_resto: nn.parte_resto || "" };
+  const origine = idx != null && prev.parti[idx] ? prev.parti[idx].argomento_id : "";
+  const creati = []; const nuoveParti = []; const titoli = []; let ambigui = 0; const ids = [];
+  for (let i = 0; i < sits.length; i++) { const x = sits[i]; const t = testi[i]; const ex = x.id && S.argomenti.get(x.id); const amb = x.collegamento === "ambiguo";
+    if (amb) { ambigui++; nuoveParti.push({ argomento_id: "", testo: t.testo, passaggi: t.indici, proposta: { id: ex ? x.id : null, titolo: x.titolo || "", ambito: x.ambito || "altro", situazione: x.situazione || "", motivo: x.motivo || "", alternativa_id: x.alternativa_id && S.argomenti.get(x.alternativa_id) ? x.alternativa_id : null, impegni: [] } }); titoli.push((x.titolo || "?") + " (da decidere)"); ids.push(null); continue; }
+    let id;
+    if (ex) { id = ex.id; titoli.push(ex.titolo); }
+    else { const na = { id: uid(), titolo: x.titolo || "Senza titolo", ambito: AMBITI[x.ambito] ? x.ambito : "altro", situazione: x.situazione || "", ultima_novita: { testo: "", data: nn.data_nota }, stato: "aperto", creato: nowIso(), aggiornato: nowIso(), ultimo_riscontro: nn.data_nota, versioni: [], origine_nota_id: n.id, da_divisione: true }; await save("argomenti", na.id, na, { silent: true, noUndo: true, noRender: true }); id = na.id; creati.push(id); titoli.push(na.titolo + " (nuova)"); }
+    ids.push(id); nuoveParti.push({ argomento_id: id, testo: t.testo, passaggi: t.indici });
+  }
+  // collegamenti utili fra situazioni distinte (senza fonderle)
+  for (const c of (Array.isArray(r.collegamenti) ? r.collegamenti : [])) { const A = ids[c.a], B = ids[c.b]; if (!A || !B || A === B) continue; for (const [x, y] of [[A, B], [B, A]]) { const a = S.argomenti.get(x); if (!a) continue; const cor = (a.correlati || []); if (cor.some(k => k.id === y)) continue; const na = clone(a); na.correlati = cor.concat([{ id: y, perche: String(c.perche || "").slice(0, 200), nota_id: n.id }]); await save("argomenti", x, na, { silent: true, noUndo: true, noRender: true }); } }
+  // controllo esatto: ogni passaggio non assegnato resta «Senza argomento» con il suo testo originale
+  const perse = ric.nonAssegnati.map(sg => sg.testo);
+  if (ric.nonAssegnati.length) nuoveParti.push({ argomento_id: "", testo: ric.nonAssegnati.map(sg => sg.testo).join(" "), passaggi: ric.nonAssegnati.map(sg => sg.i), non_assegnata: true });
+  // verifica finale sul salvato: l'unione dei passaggi assegnati deve coprire tutto il testo (altrimenti errore, non silenzio)
+  const coperti = new Set(nuoveParti.flatMap(p => p.passaggi || [])); const mancano = segs.filter(sg => !coperti.has(sg.i)); if (mancano.length) throw { code: "copertura_incompleta", message: "Passaggi non conservati: " + mancano.map(x => x.i).join(",") };
+  if (idx == null) { nn.parti = nuoveParti; delete nn.parte_resto; } else { nn.parti = prev.parti.slice(0, idx).concat(nuoveParti, prev.parti.slice(idx + 1)); }
+  nn.argomento_ids = Array.from(new Set(nn.parti.map(p => p.argomento_id).filter(Boolean))); nn.analisi_stato = "ok"; nn.analisi = (nn.analisi ? nn.analisi + " · " : "") + "Divisa in situazioni (" + sits.length + ") il " + today();
+  if (Array.isArray(r.identita_incerte) && r.identita_incerte.length) nn.identita_incerte = Array.from(new Set((nn.identita_incerte || []).concat(r.identita_incerte.map(String))));
+  if (r.istruzioni_sospette) nn.istruzioni_sospette = true;
+  nn.divisioni = (nn.divisioni || []).concat([{ quando: nowIso(), su_parte: idx, prev, dopo: clone(nuoveParti), origine, creati, titoli, identita_incerte: r.identita_incerte || [], perse: perse.length }]);
+  await save("note", n.id, nn, { label: "Divisa in situazioni", noRender: !!opts.noRender });
+  const toccati = Array.from(new Set(nuoveParti.map(p => p.argomento_id).filter(Boolean).concat(origine ? [origine] : [])));
+  // la divisione aggiorna i ragionamenti delle situazioni coinvolte (compresa quella di origine, da cui il testo è stato tolto): subito se sono poche (≤3), altrimenti le segna «da aggiornare»
+  await segnaOAggiornaCoach(toccati, opts.coach !== false && toccati.length <= 3);
+  return { n: nn, titoli, parti: nuoveParti, perse, identita: r.identita_incerte || [], ambigui, creati };
+}
+async function segnaOAggiornaCoach(ids, subito) { for (const id of ids) { if (subito) { coachAuto(id); continue; } const a = S.argomenti.get(id); if (!a) continue; if (a.ultimo_coach && !a.ultimo_coach.da_aggiornare) await scriviCampi("argomenti", id, { ultimo_coach: Object.assign({}, a.ultimo_coach, { da_aggiornare: true }) }); else if (!a.ultimo_coach && a.coach_stato !== "nessuno") await scriviCampi("argomenti", id, { coach_stato: "nessuno" }); } }
+async function annullaDivisione(n) {
+  // Annulla l'ultima divisione conservando ciò che è cambiato dopo: le parti prodotte dalla divisione e rimaste identiche vengono tolte e il testo
+  // torna com'era; una parte modificata dopo (testo corretto, argomento cambiato) o aggiunta dopo resta com'è. Niente ripristino cieco.
+  const nn = clone(S.note.get(n.id) || n); const d = (nn.divisioni || []).pop(); if (!d) { toast("Nessuna divisione da annullare"); return; }
+  const chiave = p => JSON.stringify([p.argomento_id || "", normEsatta(p.testo), !!p.non_assegnata]);
+  const prodotte = new Map((d.dopo || []).map(p => [chiave(p), p])); const attuali = nn.parti || [];
+  const intatte = attuali.filter(p => prodotte.has(chiave(p))); const modificate = attuali.filter(p => !prodotte.has(chiave(p)) && !(d.prev.parti || []).some(q => chiave(q) === chiave(p)));
+  const altrePrev = attuali.filter(p => !prodotte.has(chiave(p)) && (d.prev.parti || []).some(q => chiave(q) === chiave(p))); // parti che c'erano già prima e sono rimaste
+  let conservati = 0;
+  for (const id of d.creati || []) { let a = S.argomenti.get(id); if (S.db) { try { const sn = await S.db.collection("argomenti").doc(id).get(); a = sn.exists ? Object.assign({ id }, sn.data()) : null; } catch (e) {} } if (!a) continue;
+    const usatoDaModificate = modificate.some(p => p.argomento_id === id); const altre = Array.from(S.note.values()).some(x => x.id !== n.id && (x.argomento_ids || []).includes(id)); const restano = Array.from(S.impegni.values()).some(i => i.argomento_id === id); const modificato = (a.versioni || []).length || a.stato === "archiviato";
+    if (!altre && !restano && !modificato && !usatoDaModificate) await del("argomenti", id, { noUndo: true, label: "Annulla divisione" }); else conservati++; }
+  // ricostruzione: le parti precedenti alla divisione (per una ridivisione: la parte di origine torna con il suo testo) + le parti modificate/aggiunte dopo
+  let base;
+  if (d.su_parte == null) base = clone(d.prev.parti || []);
+  else { base = clone(d.prev.parti || []); }
+  const ripristinate = base.filter(p => !attuali.some(q => chiave(q) === chiave(p)) || altrePrev.some(q => chiave(q) === chiave(p)));
+  nn.parti = ripristinate.concat(modificate); if (d.prev.parte_resto && !nn.parti.length) nn.parte_resto = d.prev.parte_resto;
+  nn.argomento_ids = Array.from(new Set(nn.parti.map(p => p.argomento_id).filter(Boolean).concat(nn.parti.length ? [] : d.prev.argomento_ids || [])));
+  nn.divisioni_annullate = (nn.divisioni_annullate || []).concat([{ quando: nowIso(), divisione: d, conservate: modificate.length, tolte: intatte.length }]);
+  await save("note", n.id, nn, { label: "Annulla divisione" });
+  toast("Divisione annullata: " + (intatte.length ? intatte.length + " parti tolte" : "niente da togliere") + (modificate.length ? " · " + modificate.length + " parti conservate perché modificate dopo" : "") + (conservati ? " · " + conservati + " situazioni conservate perché già usate" : ""));
+  const ids = Array.from(new Set(nn.parti.map(p => p.argomento_id).filter(Boolean).concat(d.origine ? [d.origine] : []).concat((d.dopo || []).map(p => p.argomento_id).filter(Boolean)))); await segnaOAggiornaCoach(ids, ids.length <= 3);
+}
+function mostraRisultatoDivisione(res, host) {
+  const box = host || $("#storia-strumenti"); if (!box || !res) return; let el = $("#dividi-risultato"); if (!el) { el = document.createElement("div"); el.id = "dividi-risultato"; box.appendChild(el); }
+  el.dataset.nota = res.n.id;
+  el.innerHTML = `<div class="card" style="border-color:var(--ok);margin:10px 0"><div class="row between"><div class="eyebrow">Divisa in ${res.titoli.length} situazioni</div><div class="row"><button class="small" data-und>Annulla</button><button class="small quiet" data-chiudi>Chiudi</button></div></div>
+    ${res.parti.map(p => `<div><b>${esc(p.argomento_id ? argTitolo(p.argomento_id) : p.proposta ? (p.proposta.titolo || "?") + " — da decidere" : "Senza argomento (frasi non attribuite)")}</b><div class="muted" style="white-space:pre-wrap">${esc(p.testo)}</div></div>`).join("")}
+    ${res.identita.length ? `<div class="banner" style="padding:6px 10px"><b>Identità incerte, non unite:</b> ${res.identita.map(esc).join(" · ")}</div>` : ""}
+    <div class="tiny">${res.perse.length ? res.perse.length + " frasi non attribuite conservate come «Senza argomento»." : "Nessuna frase persa: ogni passaggio dell'originale è in una situazione."} L'originale completo resta intero («Nota intera»).</div></div>`;
+  $("[data-chiudi]", el).addEventListener("click", () => el.remove()); $("[data-und]", el).addEventListener("click", async () => { el.remove(); await annullaDivisione(res.n); });
+}
+// selezione di frasi: tocca le frasi, poi «Crea situazione» o «Sposta in…» (anche frasi non consecutive)
+function apriSelezioneFrasi(n, idx, host) {
+  const testo = idx == null ? n.testo_originale : ((n.parti || [])[idx] || {}).testo; const frasi = segmentaTesto(testo).map(x => x.testo); if (frasi.length < 2) { toast("Qui c'è una frase sola: usa «Sposta a…»"); return; }
+  host.innerHTML = `<div class="inline-edit"><label>Tocca le frasi da separare (anche non consecutive), poi scegli</label><div class="list" data-frasi>${frasi.map((f, i) => `<button class="small quiet" style="text-align:left;white-space:normal" data-f="${i}" aria-pressed="false">${esc(f)}</button>`).join("")}</div>
+    <div class="row"><button class="primary small" data-crea>Crea situazione</button><button class="small" data-sposta>Sposta in…</button><button class="small quiet" data-an>Annulla</button></div><div data-sel-form></div></div>`;
+  const sel = new Set(); $$("[data-f]", host).forEach(b => b.addEventListener("click", () => { const i = Number(b.dataset.f); if (sel.has(i)) sel.delete(i); else sel.add(i); b.setAttribute("aria-pressed", sel.has(i)); b.style.background = sel.has(i) ? "var(--accent-soft)" : ""; }));
+  $("[data-an]", host).addEventListener("click", renderAll);
+  const estrai = () => { const scelte = frasi.filter((f, i) => sel.has(i)); const resto = frasi.filter((f, i) => !sel.has(i)); return { scelte: scelte.join(" "), resto: resto.join(" ") }; };
+  const applica = async (argId, nuovoTitolo) => {
+    if (!sel.size) { toast("Scegli almeno una frase"); return; } const { scelte, resto } = estrai(); const nn = clone(S.note.get(n.id) || n); let id = argId;
+    if (!id) { const na = { id: uid(), titolo: nuovoTitolo || scelte.split(/\s+/).slice(0, 6).join(" "), ambito: "altro", situazione: scelte.slice(0, 240), ultima_novita: { testo: "", data: nn.data_nota }, stato: "aperto", creato: nowIso(), aggiornato: nowIso(), ultimo_riscontro: nn.data_nota, versioni: [], origine_nota_id: n.id, da_selezione: true }; await save("argomenti", na.id, na, { silent: true, noUndo: true, noRender: true }); id = na.id; }
+    const nuova = { argomento_id: id, testo: scelte, da_selezione: true };
+    if (idx == null) { const base = (nn.argomento_ids || [])[0] || ""; nn.parti = [nuova].concat(resto ? [{ argomento_id: base, testo: resto }] : []); }
+    else { const prima = nn.parti[idx].argomento_id; nn.parti[idx].testo = resto; if (!resto) nn.parti.splice(idx, 1); nn.parti.splice(idx + (resto ? 1 : 0), 0, nuova); if (prima) coachAuto(prima); }
+    nn.argomento_ids = Array.from(new Set((nn.argomento_ids || []).concat(nn.parti.map(p => p.argomento_id).filter(Boolean)))); nn.collegamenti = (nn.collegamenti || []).concat([{ quando: nowIso(), argomento_id: id, come: argId ? "selezione-spostata" : "selezione-nuova", frasi: Array.from(sel) }]);
+    await save("note", n.id, nn, { label: argId ? "Frasi spostate" : "Nuova situazione dalla selezione" }); toast((argId ? "Spostate in «" : "Nuova situazione «") + (argTitolo(id) || "") + "»", true); coachAuto(id);
+  };
+  $("[data-crea]", host).addEventListener("click", async () => { if (!sel.size) { toast("Scegli almeno una frase"); return; } const f = $("[data-sel-form]", host); const { scelte } = estrai(); let proposto = scelte.split(/\s+/).slice(0, 6).join(" ");
+    if (S.sample) { try { const r = await S.sample.json(`${DOC_GUARD}\nProponi un titolo breve nella forma «Cliente o soggetto – oggetto» per questa situazione di lavoro, senza inventare nulla. Rispondi solo con JSON {"titolo":"..."}\n<materiale>\n${scelte.slice(0, 1500)}\n</materiale>`, { cache: false }); if (r && r.titolo) proposto = String(r.titolo).slice(0, 80); } catch (e) {} }
+    f.innerHTML = `<div class="row"><input type="text" data-tit value="${esc(proposto)}" style="flex:1 1 200px"><button class="primary small" data-ok>Crea</button></div>`; $("[data-ok]", f).addEventListener("click", () => applica("", $("[data-tit]", f).value.trim() || proposto)); });
+  $("[data-sposta]", host).addEventListener("click", () => { if (!sel.size) { toast("Scegli almeno una frase"); return; } const f = $("[data-sel-form]", host); f.innerHTML = `<div class="row">${selectArgomenti("")}<button class="primary small" data-ok>Sposta</button></div>`; $("[data-ok]", f).addEventListener("click", () => applica($("[data-sel]", f).value)); });
+}
+
 // ---------- STORIA: divisione in blocco delle note lunghe non analizzate ----------
-function noteDaDividere() { return Array.from(S.note.values()).filter(n => n.tipo === "nota" && n.analisi_stato === "nessuna" && !(Array.isArray(n.parti) && n.parti.length) && String(n.testo_originale || "").length > 250); }
+function noteDaDividere() { return Array.from(S.note.values()).filter(n => n.tipo === "nota" && !(Array.isArray(n.parti) && n.parti.length) && (frasiDi(n.testo_originale).length >= 3 || String(n.testo_originale || "").length > 400) && String(n.testo_originale || "").length > 200); }
 function renderStoriaStrumenti() {
   let box = $("#storia-strumenti"); const el = $("#storia-elenco"); if (!el) return;
   if (!box) { box = document.createElement("div"); box.id = "storia-strumenti"; el.parentNode.insertBefore(box, el); }
   const n = noteDaDividere().length;
-  box.innerHTML = n && S.sample ? `<div class="row" style="margin-bottom:10px"><button class="small" id="btn-dividi">Dividi per argomento le note non analizzate (${n})</button><span class="tiny">Collega le parti solo ad argomenti già esistenti; l'originale resta intero.</span></div><div id="dividi-stato" class="tiny"></div>` : "";
+  const ris = $("#dividi-risultato"); const keep = ris ? ris.outerHTML : "";
+  box.innerHTML = (S.divisioneInCorso ? `<div class="row" style="margin-bottom:10px"><button class="small" id="btn-dividi" disabled>Dividi in situazioni…</button><span class="tiny" id="dividi-stato"><span class="spin"></span> ${esc(S.divisioneStato || "")}</span></div>` : n && S.sample ? `<div class="row" style="margin-bottom:10px"><button class="small" id="btn-dividi">Dividi in situazioni le note non divise (${n})</button><span class="tiny">Riconosce i lavori distinti e crea le schede; l'originale resta intero; tutto annullabile dalla nota.</span></div><div id="dividi-stato" class="tiny"></div>` : "") + keep;
+  if (keep) { const r2 = $("#dividi-risultato"); $("[data-chiudi]", r2).addEventListener("click", () => r2.remove()); $("[data-und]", r2).addEventListener("click", () => { const nid = r2.dataset.nota; r2.remove(); const nn = S.note.get(nid); if (nn) annullaDivisione(nn); }); }
   const b = $("#btn-dividi"); if (b) b.addEventListener("click", dividiNoteInBlocco);
 }
 async function dividiNota(n) {
@@ -1208,9 +1428,9 @@ Dividi la nota per argomento: per ogni argomento esistente di cui la nota parla,
   await save("note", n.id, nn, { silent: true, noUndo: true, noRender: true }); return parti.length;
 }
 async function dividiNoteInBlocco() {
-  const list = noteDaDividere(); const st = $("#dividi-stato"); const b = $("#btn-dividi"); if (b) b.disabled = true; let fatte = 0, parti = 0;
-  for (const n of list) { if (st) st.innerHTML = `<span class="spin"></span> Divido la nota ${fatte + 1} di ${list.length}…`; try { parti += await dividiNota(n); fatte++; } catch (e) { if (st) st.textContent = "Interrotto alla nota " + (fatte + 1) + " (" + (e && e.code || "errore") + "); le note già divise sono salvate."; renderAll(); return; } }
-  renderAll(); toast(`Divise ${fatte} note in ${parti} parti`, true);
+  const list = noteDaDividere(); if (S.divisioneInCorso) return; S.divisioneInCorso = true; let fatte = 0, parti = 0, nuove = 0; const t0 = Date.now();
+  for (const n of list) { S.divisioneStato = `Divido la nota ${fatte + 1} di ${list.length}…`; renderStoriaStrumenti(); try { const res = await dividiInSituazioni(n, null, { coach: false, noRender: true }); if (res) { parti += res.parti.length; nuove += res.creati.length; } fatte++; } catch (e) { S.divisioneInCorso = false; S.ultimaDivisioneBlocco = { fatte, parti, nuove, errore: (e && e.code) || "errore" }; renderAll(); toast("Interrotto alla nota " + (fatte + 1) + " (" + (e && e.code || "errore") + "); le note già divise sono salvate (ognuna annullabile dalla Storia)."); return; } }
+  S.divisioneInCorso = false; S.ultimaDivisioneBlocco = { fatte, parti, nuove, secondi: Math.round((Date.now() - t0) / 1000) }; renderAll(); toast(`Divise ${fatte} note in ${parti} parti (${nuove} situazioni nuove, ${S.ultimaDivisioneBlocco.secondi} s). Il Coach si aggiorna sulle situazioni in vista.`, true);
 }
 
 // ---------- STORIA ----------
@@ -1252,6 +1472,9 @@ function bindNotaActions(root) {
     if (n.analisi_stato === "nessuna" && n.tipo === "nota" && S.sample) mk("Organizza", () => { showView("piano"); analizzaNota(n); });
     mk("Collega a…", () => { const opts = Array.from(S.argomenti.values()).filter(a => !(n.argomento_ids || []).includes(a.id)).sort((x, y) => (x.stato === "archiviato") - (y.stato === "archiviato") || x.titolo.localeCompare(y.titolo)); acts.innerHTML = `<div class="inline-edit"><label for="nl-${n.id}">Collega questa nota a un argomento esistente</label><select id="nl-${n.id}">${opts.map(a => `<option value="${a.id}">${esc(a.titolo)}${a.stato === "archiviato" ? " (archiviato)" : ""}</option>`).join("")}</select><div class="row"><button class="primary small" id="nlo-${n.id}">Collega</button><button class="small quiet" id="nla-${n.id}">Annulla</button></div></div>`; $("#nla-" + n.id).addEventListener("click", renderAll); $("#nlo-" + n.id).addEventListener("click", async () => { const id = $("#nl-" + n.id).value; if (!id) return; const nn = clone(n); nn.argomento_ids = Array.from(new Set((nn.argomento_ids || []).concat([id]))); nn.collegamenti = (nn.collegamenti || []).concat([{ quando: nowIso(), argomento_id: id, come: "manuale" }]); await save("note", n.id, nn, { label: "Nota collegata" }); toast("Nota collegata a «" + (argTitolo(id) || "") + "»", true); coachAuto(id); }); });
     if (n.organizzazione) mk("Annulla organizzazione", () => annullaOrganizzazione(n));
+    if (n.tipo === "nota" && S.sample && !(Array.isArray(n.parti) && n.parti.length) && (frasiDi(n.testo_originale).length >= 2 || String(n.testo_originale).length >= 60)) mk("Dividi in situazioni", async () => { acts.innerHTML = `<span class="tiny"><span class="spin"></span> Divido in situazioni…</span>`; try { const res = await dividiInSituazioni(n, null); mostraRisultatoDivisione(res); } catch (e) { toast("Divisione non riuscita (" + (e && e.code || "errore") + ")"); renderAll(); } });
+    if (n.tipo === "nota" && !(Array.isArray(n.parti) && n.parti.length) && segmentaTesto(n.testo_originale).length >= 2) mk("Seleziona frasi…", () => apriSelezioneFrasi(n, null, acts));
+    if ((n.divisioni || []).length) mk("Annulla divisione", () => annullaDivisione(n));
     mk("Copia", () => copyText(n.testo_originale + ((n.correzioni || []).length ? "\n\nCorrezioni: " + n.correzioni.map(c => c.testo).join(" | ") : "")));
   });
 }
@@ -1282,11 +1505,15 @@ Distingui: errore precedente, novità successiva, valutazione personale. Non cam
     const nn = clone(S.note.get(n.id) || n); nn.analisi_stato = "ok"; nn.analisi = (nn.analisi ? nn.analisi + " · " : "") + "Correzione (" + (r.natura || "") + "): " + (r.cosa_cambia || ""); await save("note", n.id, nn, { silent: true, noUndo: true });
     S.coachOut = null; renderAll();
     toast((nv ? nv + " impegni da verificare in Piano" : "Dati aggiornati") + " · il Coach si aggiorna" + (r.istruzioni_sospette ? " · frasi rivolte all'assistente ignorate" : ""));
-    for (const id of argIds) coachAuto(id);
+    // il Coach riparte solo sulle situazioni toccate dalla correzione (quelle con situazione nuova o impegni segnalati); se la nota ne ha poche, su tutte; le altre restano «da aggiornare» finché entrano in vista
+    const toccati = new Set((r.argomenti || []).filter(x => x.situazione_nuova && S.argomenti.get(x.id)).map(x => x.id).concat((r.impegni_da_verificare || []).map(x => (S.impegni.get(x.id) || {}).argomento_id).filter(Boolean)));
+    const daAggiornare = toccati.size ? Array.from(toccati) : argIds.length <= 3 ? argIds : [];
+    for (const id of daAggiornare) coachAuto(id);
+    for (const id of argIds) if (!daAggiornare.includes(id)) { const a = S.argomenti.get(id); if (a && a.ultimo_coach && !a.ultimo_coach.da_aggiornare) await scriviCampi("argomenti", id, { ultimo_coach: Object.assign({}, a.ultimo_coach, { da_aggiornare: true }) }); }
   } catch (e) { const nn = clone(S.note.get(n.id) || n); nn.analisi_stato = "da_aggiornare"; await save("note", n.id, nn, { silent: true, noUndo: true }); toast("Correzione salvata · analisi da aggiornare"); }
 }
 // v8: ogni nota, correzione o esito su un argomento fa ripartire il Coach di quell'argomento
-function coachDopoNota(n) { for (const id of Array.from(new Set((n.argomento_ids || []).concat((n.parti || []).map(p => p.argomento_id).filter(Boolean))))) if (S.argomenti.get(id)) coachAuto(id); }
+function coachDopoNota(n) { const ids = Array.from(new Set((n.argomento_ids || []).concat((n.parti || []).map(p => p.argomento_id).filter(Boolean)))).filter(id => S.argomenti.get(id)); segnaOAggiornaCoach(ids, ids.length <= 3); }
 // ---------- v8: ricerca tollerante e precisa ----------
 // \u00abcf\u00bb, \u00abc f\u00bb e \u00abC.F.\u00bb trovano lo stesso cliente (le lettere singole consecutive si uniscono); plurali e ordine diverso per radice;
 // le negazioni restano negazioni: \u00abconfermata\u00bb non trova \u00abnon confermata\u00bb; \u00abconferma\u00bb trova entrambe, con un'etichetta; le correzioni successive prevalgono.
@@ -1414,6 +1641,6 @@ async function ripristinaBackup(ev) {
   $("#rs-tutti").addEventListener("click", () => run(piano.nuovi.concat(piano.backupPiuRecenti)));
 }
 
-if (window.__TOP_TEST) window.__top = { S, save, del, salvaNota, analizzaNota, organizzaNota, coachAuto, decidiParte, annullaOrganizzazione, matchQ, queryInfo, tokensOf, chipPolarita, aggiornaDopoCorrezione, annullaUltima, flushQueue, datiBackup, datiBackupCompleto, ripristinaBackup, renderAll, chiediCoach, salvaLezione, setSync, today, boot };
+if (window.__TOP_TEST) window.__top = { S, save, del, salvaNota, analizzaNota, organizzaNota, dividi: dividiInSituazioni, annullaDivisione, scriviCampi, frasiDi, coachAuto, decidiParte, annullaOrganizzazione, matchQ, queryInfo, tokensOf, chipPolarita, aggiornaDopoCorrezione, annullaUltima, flushQueue, datiBackup, datiBackupCompleto, ripristinaBackup, renderAll, chiediCoach, salvaLezione, setSync, today, boot };
 boot();
 })();

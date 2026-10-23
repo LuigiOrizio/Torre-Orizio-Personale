@@ -17,7 +17,7 @@
     if (!r.ok) throw Object.assign({ code: (data && data.error) || "unavailable", message: "HTTP " + r.status }, data || {});
     return data;
   };
-  const snapOf = (coll, id, d) => ({ id, exists: d != null, data: () => d == null ? undefined : JSON.parse(JSON.stringify(d)), metadata: { fromCache: !serverFresh, hasPendingWrites: false } });
+  const snapOf = (coll, id, d) => ({ id, exists: d != null, seq: vers.get(coll + "/" + id) || 0, data: () => d == null ? undefined : JSON.parse(JSON.stringify(d)), metadata: { fromCache: !serverFresh, hasPendingWrites: false } });
   const emitColl = (coll) => { const m = cache.get(coll); const docs = Array.from(m.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([id, d]) => snapOf(coll, id, d)); for (const fn of (collListeners.get(coll) || [])) { try { fn({ docs, size: docs.length, empty: !docs.length, docChanges: () => [], metadata: { fromCache: !serverFresh, hasPendingWrites: false } }); } catch (e) { console.error(e); } } };
   const emitDoc = (coll, id) => { for (const fn of (docListeners.get(coll + "/" + id) || [])) { try { fn(snapOf(coll, id, cache.get(coll).get(id) ?? null)); } catch (e) { console.error(e); } } };
   async function poll() {
