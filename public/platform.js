@@ -49,7 +49,9 @@
     collection: () => { throw new TypeError("sottocollezioni non supportate"); },
   });
   const collRef = (coll) => ({ path: coll, doc: (id) => docRef(coll, id || ("g" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8))), onSnapshot: (fn) => { if (!collListeners.has(coll)) collListeners.set(coll, new Set()); collListeners.get(coll).add(fn); if (loaded) setTimeout(() => emitColl(coll), 0); return () => collListeners.get(coll).delete(fn); }, get: async () => ({ docs: [] }) });
-  const dbApi = { doc: (p) => { const [c, id] = p.split("/"); if (!COLLS.includes(c) || !id) throw new TypeError("percorso non valido: " + p); return docRef(c, id); }, collection: (c) => { if (!COLLS.includes(c)) throw new TypeError("collezione non valida: " + c); return collRef(c); } };
+  // v8.4: versioni dei documenti come le vede questo client dopo un aggiornamento fresco dal server (per legare una risposta del Coach a ciò che ha letto)
+  const versioni = async () => { clearTimeout(polling); await poll(); return { seq, vers: new Map(vers) }; };
+  const dbApi = { versioni, doc: (p) => { const [c, id] = p.split("/"); if (!COLLS.includes(c) || !id) throw new TypeError("percorso non valido: " + p); return docRef(c, id); }, collection: (c) => { if (!COLLS.includes(c)) throw new TypeError("collezione non valida: " + c); return collRef(c); } };
 
   const toB64 = (blob) => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(",")[1]); fr.onerror = rej; fr.readAsDataURL(blob); });
   const sample = async (input, opts) => {

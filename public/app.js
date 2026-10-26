@@ -3,11 +3,11 @@
 // ---------- stato ----------
 const S = {
   db: null, user: null, sample: null, assets: null, downloads: null, canWrite: true,
-  argomenti: new Map(), impegni: new Map(), note: new Map(), lezioni: new Map(), obiettivi: new Map(), eventi: new Map(), giorni: new Map(),
+  argomenti: new Map(), impegni: new Map(), note: new Map(), lezioni: new Map(), obiettivi: new Map(), eventi: new Map(), giorni: new Map(), impostazioni: new Map(),
   profilo: null, livello: "oggi", storiaFiltro: "tutto", coachArg: null, coachOut: null, meseVista: null,
   queue: [], undo: [], cronologia: [], fresh: {}, conflitti: new Map(), maxAzioni: 2,
 };
-const COLLS = { argomenti: "argomenti", impegni: "impegni", note: "note", lezioni: "lezioni", obiettivi: "obiettivi", eventi: "eventi", giorni: "giorni" };
+const COLLS = { argomenti: "argomenti", impegni: "impegni", note: "note", lezioni: "lezioni", obiettivi: "obiettivi", eventi: "eventi", giorni: "giorni", impostazioni: "impostazioni" };
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : "id-" + Date.now() + "-" + Math.random().toString(16).slice(2)).replace(/[^A-Za-z0-9_.~:@+-]/g, "");
@@ -40,7 +40,7 @@ const CSS_V8 = `.sit h3{font-size:1.05em}.clamp2{display:-webkit-box;-webkit-lin
 .sit-riga{display:flex;gap:10px;align-items:center;text-align:left;width:100%;background:transparent;border:1px solid transparent;border-radius:10px;padding:8px 10px;color:var(--fg)}.sit-riga:hover{background:var(--accent-soft)}.sit-riga.sel{border-color:var(--accent);background:var(--accent-soft)}.sit-riga .grow{display:flex;flex-direction:column;min-width:0}.sit-riga .tit{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sit-riga .sym{font-size:1.1em;width:1.2em;text-align:center}.sym.err{color:var(--err)}.sym.attesa{color:var(--wait)}.sym.mia{color:var(--accent)}.sym.ok{color:var(--ok,#2e7d32)}
 .pano:not(.due) [data-dettaglio]{margin:4px 0 10px 8px;border-left:3px solid var(--accent);padding-left:8px}.legenda{padding-top:6px;border-top:1px solid var(--line)}
 .prio{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line)}.prio .pn{font-weight:800;color:var(--accent);min-width:2.2em;padding:2px 6px;border-radius:8px;background:var(--accent-soft);text-align:center}.prio.vuota .pn{color:var(--muted);background:var(--line)}.prio .t{font-weight:700}.prio .row{flex-wrap:wrap}
-.quadro{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}@media(min-width:720px){.quadro{grid-template-columns:repeat(4,1fr)}}.area{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--bg);color:var(--fg)}.area .nome{font-weight:800}.area .num{font-size:.9em;margin-top:4px}.area.sel{border-color:var(--accent);background:var(--accent-soft)}
+#coach-scheda.sotto-titolo{margin:4px 0 10px 8px;border-left:3px solid var(--accent);padding-left:8px}#coach-elenco .item .meta .stato{margin-right:4px}.prio-grid{display:flex;flex-direction:column}@media(min-width:980px){html.pano-larga .prio-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}html.pano-larga .prio{flex-direction:column;border-top:none;border:1px solid var(--line);border-radius:12px;padding:10px 12px}html.pano-larga .prio .grow{width:100%}}.quadro{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}@media(min-width:720px){.quadro{grid-template-columns:repeat(4,1fr)}}.area{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--bg);color:var(--fg)}.area .nome{font-weight:800}.area .num{font-size:.9em;margin-top:4px}.area.sel{border-color:var(--accent);background:var(--accent-soft)}
 @media(min-width:980px){html.pano-larga .wrap{max-width:1080px}}`;
 function injectCssV8() { if ($("#css-v8")) return; const st = document.createElement("style"); st.id = "css-v8"; st.textContent = CSS_V8; document.head.appendChild(st); }
 
@@ -72,14 +72,14 @@ async function save(coll, id, data, opts = {}) {
   data.modificato = nowIso(); data.id = id;
   if (!opts.silent) logCrono((opts.label || "Modifica") + " · " + coll + " · " + (data.titolo || data.testo_originale || id).toString().slice(0, 60));
   map.set(id, Object.assign({}, data, { _pending: true })); if (!opts.noRender) renderAll();
-  if (!S.db) { enqueue(coll, id, data); setSync(); return false; }
+  if (!S.db) { enqueue(coll, id, data, base); setSync(); return false; }
   if (!S.canWrite) { toast("Accesso in sola lettura"); map.set(id, Object.assign({}, data, { _pending: false, _readonly: true })); return false; }
   pendingWrites++; setSync();
   try {
     const ref = S.db.collection(coll).doc(id);
     if (!opts.force) {
       const cur = await ref.get();
-      if (cur.exists) { const cm = cur.data().modificato || null; if (cm && cm !== base) { pendingWrites--; S.conflitti.set(coll + "/" + id, { coll, id, mine: data, server: Object.assign({ id }, cur.data()) }); map.set(id, Object.assign({ id }, cur.data())); setSync(); renderConflitti(); renderAll(); return false; } }
+      if (cur.exists) { const cm = cur.data().modificato || null; if (cm && cm !== base) { pendingWrites--; S.conflitti.set(coll + "/" + id, { coll, id, mine: data, server: Object.assign({ id }, cur.data()) }); salvaConflitti(); map.set(id, Object.assign({ id }, cur.data())); setSync(); renderConflitti(); renderAll(); return false; } }
     }
     await ref.set(data, opts.force ? { force: true } : undefined);
     pendingWrites--; if (pendingWrites < 0) pendingWrites = 0; setSync(); return true;
@@ -87,11 +87,11 @@ async function save(coll, id, data, opts = {}) {
     pendingWrites--; if (pendingWrites < 0) pendingWrites = 0;
     if (e && e.code === "conflict") { // il server ha rifiutato la scrittura: la versione è cambiata nel frattempo (controllo atomico lato server)
       const cur = e.current && e.current.exists ? Object.assign({ id }, e.current.data) : { id, modificato: "" };
-      S.conflitti.set(coll + "/" + id, { coll, id, mine: data, server: cur }); if (e.current && e.current.exists) map.set(id, cur); else map.delete(id);
+      S.conflitti.set(coll + "/" + id, { coll, id, mine: data, server: cur }); salvaConflitti(); if (e.current && e.current.exists) map.set(id, cur); else map.delete(id);
       setSync(); renderConflitti(); renderAll(); return false;
     }
     if (e && e.code === "invalid_argument" && !S.user) { S.canWrite = false; }
-    enqueue(coll, id, data); setSync();
+    enqueue(coll, id, data, base); setSync();
     toast("Non salvato sul server: tenuto su questo dispositivo, riprovo appena possibile"); return false;
   }
 }
@@ -101,11 +101,27 @@ async function del(coll, id, opts = {}) {
   if (!S.db) return false; pendingWrites++; setSync();
   try { await S.db.collection(coll).doc(id).delete(); pendingWrites--; setSync(); return true; } catch (e) { pendingWrites--; setSync(); toast("Eliminazione non riuscita"); return false; }
 }
-function enqueue(coll, id, data) { S.queue = S.queue.filter(q => !(q.coll === coll && q.id === id)); S.queue.push({ coll, id, data, quando: nowIso() }); lsSet("top_queue", S.queue); }
+function salvaConflitti() { lsSet("top_conflitti", Array.from(S.conflitti.values())); } // i conflitti restano su questo dispositivo finché non li risolvi (anche dopo una riapertura)
+function enqueue(coll, id, data, base) { const prec = S.queue.find(q => q.coll === coll && q.id === id); if (prec && prec.data && data && prec.data.modificato && data.modificato && prec.data.modificato > data.modificato) return; /* in coda c'è già una modifica più nuova dello stesso documento: non la sostituisco con una vecchia */ S.queue = S.queue.filter(q => !(q.coll === coll && q.id === id)); S.queue.push({ coll, id, data, base: prec ? prec.base : base, quando: nowIso() }); lsSet("top_queue", S.queue); } // base = versione (modificato) da cui è partita la modifica: al ritorno della rete si confronta con quella, non con la copia in attesa
+let flushInCorso = false;
 async function flushQueue() {
-  if (!S.db || !S.queue.length) return; const q = S.queue.slice(); S.queue = []; lsSet("top_queue", S.queue); setSync();
-  for (const w of q) { const map = mapOf(w.coll); const prev = map.get(w.id); const d = Object.assign({}, w.data); d.modificato = prev && !prev._pending ? prev.modificato : d.modificato; await save(w.coll, w.id, d, { noUndo: true, silent: true, noRender: true }); }
-  renderAll(); if (!S.queue.length) toast("Tutto salvato sul server");
+  // v8.4.2: ogni modifica RESTA nella coda persistente finché il server non l'ha confermata (o finché non è conservato un conflitto con le due versioni).
+  // Chiudere o ricaricare l'app durante l'invio non perde nulla: alla riapertura la voce è ancora lì e riparte. Si toglie solo la voce confermata,
+  // mai l'intera coda; una modifica più nuova sullo stesso documento (voce sostituita) non viene toccata dalla conferma di quella precedente.
+  if (!S.db || !S.queue.length || flushInCorso) return; flushInCorso = true; setSync();
+  try {
+    for (const w of S.queue.slice()) {
+      if (!S.queue.includes(w)) continue; // sostituita da una modifica più nuova nel frattempo
+      const map = mapOf(w.coll); const prev = map.get(w.id);
+      // la base è SEMPRE quella conservata con la modifica accodata (anche dopo una riapertura, quando la mappa ha già la copia del server):
+      // se nel frattempo un altro dispositivo ha cambiato il documento, save() apre un conflitto con le due versioni invece di sovrascrivere
+      if (w.base !== undefined) map.set(w.id, Object.assign({}, prev || { id: w.id }, { modificato: w.base || undefined }));
+      const okk = await save(w.coll, w.id, Object.assign({}, w.data), { noUndo: true, silent: true, noRender: true, dallaCoda: true });
+      const sostituita = !S.queue.includes(w); // save() ha rimesso in coda una voce nuova (errore di rete) oppure l'utente ha modificato ancora
+      if (okk || sostituita || S.conflitti.has(w.coll + "/" + w.id)) { S.queue = S.queue.filter(x => x !== w); lsSet("top_queue", S.queue); }
+    }
+  } finally { flushInCorso = false; }
+  setSync(); renderAll(); if (!S.queue.length) toast("Tutto salvato sul server");
 }
 async function annullaUltima() {
   const u = S.undo.pop(); if (!u) { toast("Niente da annullare"); return; }
@@ -119,8 +135,8 @@ function renderConflitti() {
   for (const [k, c] of S.conflitti) {
     const b = document.createElement("div"); b.className = "banner err conflict";
     b.innerHTML = `<div><b>Modifica non salvata:</b> «${esc((c.mine.titolo || c.mine.testo_originale || c.id).toString().slice(0, 60))}» è cambiato da un altro dispositivo (${fmtTs(c.server.modificato)}). Quale versione tenere?</div><div class="row"><button class="small" data-keep="server">Tieni quella del server</button><button class="small" data-keep="mine">Usa la mia</button></div>`;
-    $('[data-keep="server"]', b).addEventListener("click", () => { S.conflitti.delete(k); b.remove(); setSync(); renderAll(); toast("Tenuta la versione del server"); });
-    $('[data-keep="mine"]', b).addEventListener("click", async () => { S.conflitti.delete(k); b.remove(); const d = Object.assign({}, c.mine); d.versioni = (c.server.versioni || []).concat(d.versioni || []).concat([{ quando: nowIso(), cosa: "Sovrascritta una versione di un altro dispositivo (" + fmtTs(c.server.modificato) + ")" }]); await save(c.coll, c.id, d, { force: true, label: "Risoluzione conflitto" }); });
+    $('[data-keep="server"]', b).addEventListener("click", () => { S.conflitti.delete(k); salvaConflitti(); b.remove(); setSync(); renderAll(); toast("Tenuta la versione del server"); });
+    $('[data-keep="mine"]', b).addEventListener("click", async () => { b.remove(); const d = Object.assign({}, c.mine); d.versioni = (c.server.versioni || []).concat(d.versioni || []).concat([{ quando: nowIso(), cosa: "Sovrascritta una versione di un altro dispositivo (" + fmtTs(c.server.modificato) + ")" }]); await save(c.coll, c.id, d, { force: true, label: "Risoluzione conflitto" }); if (S.conflitti.get(k) === c) { S.conflitti.delete(k); salvaConflitti(); } renderConflitti(); }); // v8.4.3: si toglie SOLO questo conflitto, dopo la scrittura confermata (o rimessa in coda); un conflitto più nuovo nato nel frattempo sullo stesso documento (altra correzione) resta
     a.appendChild(b);
   }
 }
@@ -137,12 +153,12 @@ function subscribe(coll, map) {
 // ---------- avvio ----------
 async function boot() {
   $("#nota-data").value = today(); S.meseVista = today().slice(0, 7);
-  S.queue = lsGet("top_queue", []); applyFontSize(lsGet("top_fs", 17));
+  S.queue = lsGet("top_queue", []); applyFontSize(lsGet("top_fs", 17)); for (const c of lsGet("top_conflitti", [])) if (c && c.coll && c.id) S.conflitti.set(c.coll + "/" + c.id, c);
   injectCssV8(); const bsa = $("#btn-salva-analizza"); if (bsa) bsa.textContent = "Salva e organizza"; const tp = $("#tab-piano"); if (tp) tp.textContent = "Panoramica"; const lo = $('.seg [data-lv="oggi"]'); if (lo) lo.textContent = "Panoramica"; S.periodoPrio = lsGet("top_periodo", "oggi"); S.eraDesktop = desktop(); document.documentElement.classList.toggle("pano-larga", !$("#view-piano").hidden); const lab = $('label[for="nota"]'); if (lab) lab.textContent = "Racconta cosa è successo";
   // bozza: il testo non ancora inviato resta su questo dispositivo (non è una nota registrata)
   const ta = $("#nota"); const bozza = lsGet("top_bozza", ""); if (bozza && !ta.value) { ta.value = bozza; $("#nota-stato").hidden = false; $("#nota-stato").textContent = "Bozza ripresa (non ancora registrata)."; } ta.addEventListener("input", () => lsSet("top_bozza", ta.value));
   S.coachArg = lsGet("top_coach_arg", null);
-  bindUI(); renderAll(); setSync();
+  bindUI(); renderAll(); renderConflitti(); setSync();
   try {
     const [db, user, sample, assets, downloads] = await Promise.all([claude.use("db"), claude.use("user"), claude.use("sample"), claude.use("assets"), claude.use("downloads")]);
     S.db = db; S.user = user; S.sample = sample; S.assets = assets; S.downloads = downloads;
@@ -152,7 +168,6 @@ async function boot() {
   if (!S.sample) showBanner("Il Coach non è disponibile in questa vista. Puoi comunque scrivere note e impegni a mano.", "");
   if (!S.downloads) $("#btn-backup").disabled = true;
   Object.keys(COLLS).forEach(c => subscribe(c, S[c]));
-  S.db.doc("impostazioni/priorita").onSnapshot(d => { S.priorita = d.exists ? d.data() : {}; if (S.livello === "oggi") renderOggi(); }, () => {});
   S.db.doc("impostazioni/profilo").onSnapshot(d => { S.profilo = d.exists ? d.data() : null; const m = S.profilo && S.profilo.max_azioni; if (m != null) { S.maxAzioni = Number(m); $("#imp-max").value = String(S.maxAzioni); } renderAll(); }, () => {});
   window.addEventListener("online", flushQueue);
   if (S.queue.length) setTimeout(flushQueue, 1500);
@@ -317,7 +332,7 @@ function renderOggi() {
   h += panoramicaHTML(sits, sel);
   h += prioritaHTML(t);
   h += quadroHTML(sits);
-  if (principale && !prioritaScelte(t).some(p => p.id === principale.id)) h += `<div class="card"><div class="eyebrow">Priorità di oggi</div>${impegnoHTML(principale)}</div>`;
+  if (principale && !prioritaScelte(t).some(p => p && p.id === principale.id)) h += `<div class="card"><div class="eyebrow">Priorità di oggi</div>${impegnoHTML(principale)}</div>`;
   if (daVerificare.length) h += `<div class="card" style="border-color:var(--err)"><div class="eyebrow">Da verificare dopo una correzione</div>${daVerificare.map(impegnoHTML).join("")}</div>`;
   h += `<details ${attenzione.length ? "open" : ""}><summary>Azioni, attese e settimana <span class="tiny">${mie.length} azioni · ${attese.length} attese${attenzione.length ? " · " + attenzione.length + " da guardare" : ""}</span></summary><div class="inner">
     <div class="eyebrow">Azioni mie (${S.maxAzioni} in vista)</div>${selezionate.length ? selezionate.map(impegnoHTML).join("") : `<p class="muted">Nessun'altra azione in vista.</p>`}${mie.length > selezionate.length ? `<details class="flat"><summary class="tiny">Tutte le azioni mie (${mie.length})</summary><div class="inner">${mie.map(impegnoHTML).join("")}</div></details>` : ""}
@@ -344,7 +359,7 @@ function statoSituazione(a) {
   if (imps.some(i => i.tipo !== "mia")) return "attesa";
   const r = (coachStato(a) === "ok" && a.ultimo_coach && a.ultimo_coach.r) || null;
   if (r && r.manca) return "chiarire";
-  if (r && ((r.posso_aspettare && r.posso_aspettare.si) || /^aspett/i.test(r.prossima_mossa || "") || /nessuna azione/i.test(r.chi_e_quando || ""))) return "attesa";
+  if (r) return ((r.posso_aspettare && r.posso_aspettare.si) || /^aspett/i.test(r.prossima_mossa || "") || /nessuna azione/i.test(r.chi_e_quando || "")) ? "attesa" : "corso";
   if (a.posso_aspettare) return "attesa";
   return "corso";
 }
@@ -353,10 +368,10 @@ function statoChip(a) { const s = STATI[statoSituazione(a)]; return `<span class
 const AREE = { direzione: { nome: "Direzione", cosa: "Decisioni e priorità" }, rapporti: { nome: "Rapporti", cosa: "Clienti, agenti, colleghi" }, progetti: { nome: "Progetti", cosa: "Prove e lavoro in azienda" }, crescita: { nome: "Crescita", cosa: "Cosa sto imparando" } };
 function apprendimentoDi(a) { const r = a.ultimo_coach && a.ultimo_coach.r; const ap = r && r.apprendimento; return ap && (ap.crescita_personale || ap.contributo_aziendale) ? ap : null; }
 function areeDi(a) { const out = []; if (a.ambito === "progetti") out.push("progetti"); if (a.ambito === "italia" || a.ambito === "estero") out.push("rapporti"); if (statoSituazione(a) === "chiarire" || a.ambito === "altro" || !a.ambito) out.push("direzione"); if (apprendimentoDi(a)) out.push("crescita"); return out; }
-function situazioneSelezionata(sits) {
-  const tutte = sits.concat(S.mostraConcluse ? Array.from(S.argomenti.values()).filter(a => a.stato === "archiviato") : []);
-  const id = S.selSit || lsGet("top_sel_sit", null); let a = tutte.find(x => x.id === id);
-  if (!a) a = elencoSituazioni(sits)[0] || sits[0] || null; S.selSit = a ? a.id : null; return a;
+function situazioneSelezionata(sits) { // la scelta segue l'elenco visibile: con un filtro attivo il dettaglio è sempre una situazione dell'area scelta (o nessuna, se l'area è vuota)
+  const lista = elencoSituazioni(sits); if (S.selChiusa && !desktop()) return null; // sul telefono «chiusa da te» resta chiusa
+  const id = S.selSit || lsGet("top_sel_sit", null); let a = lista.find(x => x.id === id);
+  if (!a) a = lista[0] || null; S.selSit = a ? a.id : null; return a;
 }
 function elencoSituazioni(sits) {
   let lista = sits.slice(); if (S.filtroArea) lista = lista.filter(a => areeDi(a).includes(S.filtroArea));
@@ -364,7 +379,7 @@ function elencoSituazioni(sits) {
   return lista;
 }
 function titoloBreve(t) { t = String(t || ""); return t.length > 44 ? t.slice(0, 42).replace(/\s+\S*$/, "") + "…" : t; }
-function rigaSituazioneHTML(a, sel) { const st = STATI[statoSituazione(a)]; return `<button class="sit-riga ${sel ? "sel" : ""}" data-sel="${a.id}" aria-pressed="${sel}" title="${esc(a.titolo)}"><span class="sym ${st.cls}" aria-hidden="true">${st.sym}</span><span class="grow"><span class="tit">${esc(titoloBreve(a.titolo))}</span><span class="tiny">${st.nome}${(S.attenzione.get(a.id) || 0) >= 50 ? " · da verificare" : ""}</span></span></button>`; }
+function rigaSituazioneHTML(a, sel) { sel = !!sel; const st = STATI[statoSituazione(a)]; return `<button class="sit-riga ${sel ? "sel" : ""}" data-sel="${a.id}" aria-pressed="${sel}" title="${esc(a.titolo)}"><span class="sym ${st.cls}" aria-hidden="true">${st.sym}</span><span class="grow"><span class="tit">${esc(titoloBreve(a.titolo))}</span><span class="tiny">${st.nome}${(S.attenzione.get(a.id) || 0) >= 50 ? " · da verificare" : ""}</span></span></button>`; }
 function desktop() { return window.matchMedia && window.matchMedia("(min-width: 980px)").matches; }
 function panoramicaHTML(sits, sel) {
   const lista = elencoSituazioni(sits); const concluse = Array.from(S.argomenti.values()).filter(a => a.stato === "archiviato").length;
@@ -380,7 +395,7 @@ function panoramicaHTML(sits, sel) {
     ${desktop() ? `<div class="pano-centro">${dettaglio}</div>` : ""}</div>`;
 }
 function bindPanoramica(root) {
-  $$("[data-sel]", root).forEach(b => b.addEventListener("click", () => { const id = b.dataset.sel; if (S.selSit === id && !desktop()) { S.selSit = null; lsSet("top_sel_sit", null); } else { S.selSit = id; lsSet("top_sel_sit", id); } renderOggi(); if (desktop()) { const d = $("[data-dettaglio]", root); if (d) d.scrollIntoView({ block: "nearest" }); } }));
+  $$("[data-sel]", root).forEach(b => b.addEventListener("click", () => { const id = b.dataset.sel; if (S.selSit === id && !S.selChiusa && !desktop()) { S.selChiusa = true; } else { S.selChiusa = false; S.selSit = id; lsSet("top_sel_sit", id); S.coachArg = id; lsSet("top_coach_arg", id); } renderOggi(); if (desktop()) { const d = $("[data-dettaglio]", root); if (d) d.scrollIntoView({ block: "nearest" }); } })); // sul telefono toccare di nuovo la riga aperta la richiude; una scelta vale anche per la sezione Coach
   const off = $("[data-area-off]", root); if (off) off.addEventListener("click", () => { S.filtroArea = null; renderOggi(); });
   const tutto = $("[data-elenco-tutto]", root); if (tutto) tutto.addEventListener("click", () => { S.elencoEsteso = true; renderOggi(); });
   const meno = $("[data-elenco-meno]", root); if (meno) meno.addEventListener("click", () => { S.elencoEsteso = false; renderOggi(); });
@@ -388,8 +403,8 @@ function bindPanoramica(root) {
 }
 // Tre priorità: P1, P2, P3 per oggi o per questa settimana. Proposte dagli impegni tuoi già registrati (mai inventate); le scegli o le cambi tu; gli spazi vuoti restano vuoti.
 function chiavePeriodo(t) { return S.periodoPrio === "settimana" ? "settimana:" + weekKey(t) : "oggi:" + t; }
-function prioritaDoc() { return S.priorita || {}; }
-function prioritaScelte(t) { const d = prioritaDoc()[chiavePeriodo(t)]; const ids = (d && d.ids) || []; return ids.map(x => risolviPriorita(x)).filter(Boolean); }
+function prioritaDoc() { return S.impostazioni.get("priorita") || S.priorita || {}; }
+function prioritaScelte(t) { const d = prioritaDoc()[chiavePeriodo(t)]; const ids = (d && d.ids) || []; return [0, 1, 2].map(k => risolviPriorita(ids[k])); } // tre posizioni fisse: un posto vuoto resta vuoto (P3 resta P3)
 function risolviPriorita(x) { if (!x) return null; if (x.tipo === "sit") { const a = S.argomenti.get(x.id); return a && a.stato !== "archiviato" ? { tipo: "sit", id: a.id, a } : null; } const i = S.impegni.get(x.id); return i && i.stato === "aperto" ? { tipo: "imp", id: i.id, i } : null; }
 function prioritaProposte(t) {
   const fine = S.periodoPrio === "settimana" ? weekDays(t)[6] : t;
@@ -399,40 +414,42 @@ function prioritaProposte(t) {
 }
 function prioritaHTML(t) {
   const scelte = prioritaScelte(t); const doc = prioritaDoc()[chiavePeriodo(t)]; const manuali = !!(doc && doc.ids);
-  const slot = manuali ? scelte : prioritaProposte(t); const fine = S.periodoPrio === "settimana" ? weekDays(t)[6] : t;
+  const slot = manuali ? scelte : prioritaProposte(t); const fine = S.periodoPrio === "settimana" ? weekDays(t)[6] : t; const inCoda = S.queue.some(q => q.coll === "impostazioni" && q.id === "priorita") || !!(S.impostazioni.get("priorita") || {})._pending;
   const riga = (p, k) => { if (!p) return `<div class="prio vuota"><span class="pn">P${k + 1}</span><div class="grow"><div class="muted">Libero</div><div class="tiny">Nessuna attività da aggiungere per riempirlo.</div></div><button class="small quiet" data-prio-scegli="${k}">Scegli…</button></div>`;
     if (p.tipo === "sit") { const a = p.a; return `<div class="prio"><span class="pn">P${k + 1}</span><div class="grow"><div class="t">${esc(a.titolo)}</div><div class="tiny">Situazione · ${STATI[statoSituazione(a)].nome}</div></div><div class="row"><button class="small quiet" data-prio-apri="${a.id}">Apri</button><button class="small quiet" data-prio-scegli="${k}">Cambia</button><button class="small quiet" data-prio-togli="${k}">Togli</button></div></div>`; }
     const i = p.i; return `<div class="prio" data-imp="${i.id}"><span class="pn">P${k + 1}</span><div class="grow"><div class="t">${esc(i.titolo)}</div><div class="tiny">${[i.argomento_id ? argTitolo(i.argomento_id) : "", i.data ? fmtDate(i.data) + (i.data_stimata ? " (stima)" : "") : "", p.proposta ? "proposta dal piano" : "scelta da te"].filter(Boolean).map(esc).join(" · ")}</div><div class="row" data-actions></div></div><div class="row"><button class="small" data-prio-fatto="${i.id}">Fatto</button><button class="small quiet" data-prio-scegli="${k}">Cambia</button>${manuali ? `<button class="small quiet" data-prio-togli="${k}">Togli</button>` : ""}</div></div>`; };
   return `<div class="card" data-priorita><div class="row between"><div class="eyebrow">Tre priorità</div><div class="seg" role="group" aria-label="Periodo"><button data-per="oggi" aria-pressed="${S.periodoPrio !== "settimana"}">Oggi</button><button data-per="settimana" aria-pressed="${S.periodoPrio === "settimana"}">Questa settimana</button></div></div>
-    <div class="tiny">${S.periodoPrio === "settimana" ? "Fino a " + fmtDate(fine) : fmtDate(t)}${manuali ? " · scelte da te" : slot.length ? " · proposte dagli impegni tuoi con data: cambia pure" : ""}</div>
-    ${[0, 1, 2].map(k => riga(slot[k], k)).join("")}
+    <div class="tiny">${S.periodoPrio === "settimana" ? "Fino a " + fmtDate(fine) : fmtDate(t)}${manuali ? " · scelte da te" : slot.length ? " · proposte dagli impegni tuoi con data: cambia pure" : ""}${inCoda ? ` · <span class="chip err">Modifica non ancora salvata sul server</span>` : ""}</div>
+    <div class="prio-grid">${[0, 1, 2].map(k => riga(slot[k], k)).join("")}</div>
     ${manuali ? `<div class="row"><button class="small quiet" data-prio-reset>Torna alle proposte</button></div>` : ""}<div data-prio-form></div></div>`;
 }
-async function salvaPriorita(t, ids) { const d = clone(prioritaDoc()); d[chiavePeriodo(t)] = { ids, quando: nowIso() }; for (const k of Object.keys(d)) if (/^oggi:/.test(k) && k < "oggi:" + weekDays(t)[0]) delete d[k]; S.priorita = d; if (S.db) { try { await S.db.doc("impostazioni/priorita").set(d); } catch (e) { toast("Priorità non salvate sul server"); } } renderOggi(); }
+// le priorità si salvano come ogni altro documento: controllo dei conflitti, coda locale persistente se il server non risponde (riprova da sola), annullabile
+async function salvaPriorita(t, ids) { const d = clone(prioritaDoc()); delete d._pending; delete d._readonly; d[chiavePeriodo(t)] = { ids: [0, 1, 2].map(k => ids[k] || null), quando: nowIso() }; for (const k of Object.keys(d)) if (/^oggi:/.test(k) && k < "oggi:" + weekDays(t)[0]) delete d[k]; await save("impostazioni", "priorita", d, { label: "Tre priorità", noRender: true }); renderOggi(); }
 function bindPriorita(root, t) {
   const box = $("[data-priorita]", root); if (!box) return;
   $$("[data-per]", box).forEach(b => b.addEventListener("click", () => { S.periodoPrio = b.dataset.per; lsSet("top_periodo", S.periodoPrio); renderOggi(); }));
-  const correnti = () => { const doc = prioritaDoc()[chiavePeriodo(t)]; return doc && doc.ids ? prioritaScelte(t).map(p => ({ tipo: p.tipo, id: p.id })) : prioritaProposte(t).map(p => ({ tipo: "imp", id: p.id })); };
+  const correnti = () => { const doc = prioritaDoc()[chiavePeriodo(t)]; return doc && doc.ids ? prioritaScelte(t).map(p => p ? { tipo: p.tipo, id: p.id } : null) : prioritaProposte(t).map(p => ({ tipo: "imp", id: p.id })); };
   $$("[data-prio-scegli]", box).forEach(b => b.addEventListener("click", () => {
     const k = Number(b.dataset.prioScegli); const f = $("[data-prio-form]", box); const mie = impegniAperti().filter(i => i.tipo === "mia"); const sits = argAperti();
     f.innerHTML = `<div class="inline-edit"><label>P${k + 1}: scegli un impegno tuo o una situazione già registrata</label><select data-scelta><option value="">—</option>${mie.length ? `<optgroup label="Impegni miei">${mie.map(i => `<option value="imp:${i.id}">${esc(i.titolo)}${i.data ? " · " + fmtDate(i.data) : ""}</option>`).join("")}</optgroup>` : ""}<optgroup label="Situazioni">${sits.map(a => `<option value="sit:${a.id}">${esc(a.titolo)}</option>`).join("")}</optgroup></select>${!mie.length ? `<div class="tiny">Nessun impegno tuo registrato: le priorità nascono da impegni e situazioni già presenti, non vengono inventate.</div>` : ""}<div class="row"><button class="primary small" data-ok>Salva</button><button class="small quiet" data-an>Annulla</button></div></div>`;
     $("[data-an]", f).addEventListener("click", () => { f.innerHTML = ""; });
-    $("[data-ok]", f).addEventListener("click", async () => { const v = $("[data-scelta]", f).value; if (!v) return; const [tipo, id] = v.split(":"); const ids = correnti(); while (ids.length < k) ids.push(null); ids[k] = { tipo, id }; await salvaPriorita(t, ids.filter(Boolean).filter((x, i, arr) => arr.findIndex(y => y.id === x.id) === i).slice(0, 3)); });
+    $("[data-ok]", f).addEventListener("click", async () => { const v = $("[data-scelta]", f).value; if (!v) return; const [tipo, id] = v.split(":"); const ids = correnti(); for (let i = 0; i < 3; i++) if (i !== k && ids[i] && ids[i].id === id) ids[i] = null; ids[k] = { tipo, id }; await salvaPriorita(t, ids); }); // la posizione scelta è quella che cambia; un doppione altrove si libera
   }));
-  $$("[data-prio-togli]", box).forEach(b => b.addEventListener("click", async () => { const k = Number(b.dataset.prioTogli); const ids = correnti(); ids.splice(k, 1); await salvaPriorita(t, ids); }));
-  const r = $("[data-prio-reset]", box); if (r) r.addEventListener("click", async () => { const d = clone(prioritaDoc()); delete d[chiavePeriodo(t)]; S.priorita = d; if (S.db) { try { await S.db.doc("impostazioni/priorita").set(d); } catch (e) {} } renderOggi(); });
+  $$("[data-prio-togli]", box).forEach(b => b.addEventListener("click", async () => { const k = Number(b.dataset.prioTogli); const ids = correnti(); ids[k] = null; await salvaPriorita(t, ids); })); // «Togli» svuota quel posto, gli altri non si spostano
+  const r = $("[data-prio-reset]", box); if (r) r.addEventListener("click", async () => { const d = clone(prioritaDoc()); delete d._pending; delete d._readonly; delete d[chiavePeriodo(t)]; await save("impostazioni", "priorita", d, { label: "Tre priorità: torna alle proposte", noRender: true }); renderOggi(); });
   $$("[data-prio-fatto]", box).forEach(b => b.addEventListener("click", () => { const i = S.impegni.get(b.dataset.prioFatto); if (i) fattoInline(b.closest("[data-imp]"), clone(i), "Esito in breve (facoltativo)"); }));
-  $$("[data-prio-apri]", box).forEach(b => b.addEventListener("click", () => { S.selSit = b.dataset.prioApri; lsSet("top_sel_sit", S.selSit); S.filtroArea = null; renderOggi(); const d = $("[data-dettaglio]", root); if (d) d.scrollIntoView({ block: "start" }); }));
+  $$("[data-prio-apri]", box).forEach(b => b.addEventListener("click", () => { S.selSit = b.dataset.prioApri; S.selChiusa = false; lsSet("top_sel_sit", S.selSit); S.filtroArea = null; S.coachArg = S.selSit; lsSet("top_coach_arg", S.selSit); renderOggi(); const d = $("[data-dettaglio]", root); if (d) d.scrollIntoView({ block: "start" }); }));
 }
 // Quadro: quattro aree da toccare. Ogni numero è un conteggio di dati registrati (non un voto); toccare un'area filtra l'elenco delle situazioni.
 function quadroHTML(sits) {
   const n = k => sits.filter(a => areeDi(a).includes(k)).length; const chiarire = sits.filter(a => statoSituazione(a) === "chiarire").length; const attesa = sits.filter(a => statoSituazione(a) === "attesa").length;
-  const t = today(); const prio = (prioritaDoc()[chiavePeriodo(t)] || {}).ids ? prioritaScelte(t).length : prioritaProposte(t).length;
+  const t = today(); const prio = (prioritaDoc()[chiavePeriodo(t)] || {}).ids ? prioritaScelte(t).filter(Boolean).length : prioritaProposte(t).length;
   const appr = sits.filter(a => apprendimentoDi(a)).length; const lez = S.lezioni.size;
-  const righe = { direzione: `${chiarire} da chiarire · ${prio} priorità`, rapporti: `${n("rapporti")} situazioni · ${sits.filter(a => areeDi(a).includes("rapporti") && statoSituazione(a) === "attesa").length} in attesa`, progetti: `${n("progetti")} situazioni · ${sits.filter(a => areeDi(a).includes("progetti") && statoSituazione(a) === "attesa").length} in attesa`, crescita: `${lez} lezioni · ${appr} apprendimenti segnati` };
+  const pl = (k, uno, piu) => k + " " + (k === 1 ? uno : piu);
+  const righe = { direzione: `${chiarire} da chiarire · ${prio} priorità`, rapporti: `${pl(n("rapporti"), "situazione", "situazioni")} · ${sits.filter(a => areeDi(a).includes("rapporti") && statoSituazione(a) === "attesa").length} in attesa`, progetti: `${pl(n("progetti"), "situazione", "situazioni")} · ${sits.filter(a => areeDi(a).includes("progetti") && statoSituazione(a) === "attesa").length} in attesa`, crescita: `${pl(lez, "lezione", "lezioni")} · ${pl(appr, "apprendimento segnato", "apprendimenti segnati")}` };
   return `<div class="card" data-quadro><div class="row between"><div class="eyebrow">Quadro</div><span class="tiny">Tocca un'area per vedere le sue situazioni${attesa ? " · " + attesa + " in attesa in tutto" : ""}</span></div><div class="quadro">${Object.keys(AREE).map(k => `<button class="area ${S.filtroArea === k ? "sel" : ""}" data-area="${k}" aria-pressed="${S.filtroArea === k}"><span class="nome">${AREE[k].nome}</span><span class="tiny">${AREE[k].cosa}</span><span class="num">${righe[k]}</span></button>`).join("")}</div><div class="tiny">I numeri contano situazioni, impegni e lezioni registrati: nessun punteggio calcolato dall'app.</div></div>`;
 }
-function bindQuadro(root) { $$("[data-area]", root).forEach(b => b.addEventListener("click", () => { S.filtroArea = S.filtroArea === b.dataset.area ? null : b.dataset.area; renderOggi(); const p = $("[data-pano]", root); if (p && S.filtroArea) p.scrollIntoView({ block: "start" }); })); }
+function bindQuadro(root) { $$("[data-area]", root).forEach(b => b.addEventListener("click", () => { S.filtroArea = S.filtroArea === b.dataset.area ? null : b.dataset.area; S.selChiusa = false; renderOggi(); const p = $("[data-pano]", root); if (p && S.filtroArea) p.scrollIntoView({ block: "start" }); })); }
 let resizeTimer; if (typeof window.addEventListener === "function") window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { const d = desktop(); if (d !== S.eraDesktop) { S.eraDesktop = d; if (S.livello === "oggi") renderOggi(); } }, 200); });
 
 // ---------- v8: SITUAZIONI compatte nel Piano ----------
@@ -508,9 +525,9 @@ function bindSituazioni(root) {
   $$("[data-sit]", root).forEach(el => {
     const a = S.argomenti.get(el.dataset.sit); if (!a) return;
     $("[data-agg]", el).addEventListener("click", () => apriFormAggiorna(a, $("[data-sit-form]", el)));
-    const legaMore = (box) => { bindImpegnoActions(box, "coach"); bindNotaActions(box); bindParteActions(box); $$("[data-corr]", box).forEach(b => b.addEventListener("click", () => { S.coachArg = b.dataset.corr; lsSet("top_coach_arg", S.coachArg); S.coachOut = null; showView("coach"); renderCoachElenco(); renderCoachScheda(); })); };
+    const legaMore = (box) => { bindImpegnoActions(box, "coach"); bindNotaActions(box); bindParteActions(box); $$("[data-corr]", box).forEach(b => b.addEventListener("click", () => { S.coachArg = b.dataset.corr; S.selSit = S.coachArg; S.selChiusa = false; lsSet("top_sel_sit", S.selSit); lsSet("top_coach_arg", S.coachArg); S.coachOut = null; showView("coach"); renderCoachElenco(); renderCoachScheda(); })); };
     const box0 = $("[data-sit-more]", el); if (!box0.hidden) { legaMore(box0); $("[data-sintesi]", el).classList.remove("clamp2"); }
-    $("[data-apri]", el).addEventListener("click", () => { const box = $("[data-sit-more]", el); if (!box.hidden) { box.hidden = true; box.innerHTML = ""; S.apertiSit.delete(a.id); return; } S.apertiSit.add(a.id); box.hidden = false; box.innerHTML = situazioneMoreHTML(a); bindImpegnoActions(box, "coach"); bindNotaActions(box); bindParteActions(box); $$("[data-corr]", box).forEach(b => b.addEventListener("click", () => { S.coachArg = b.dataset.corr; lsSet("top_coach_arg", S.coachArg); S.coachOut = null; showView("coach"); renderCoachElenco(); renderCoachScheda(); })); $("[data-sintesi]", el).classList.remove("clamp2"); });
+    $("[data-apri]", el).addEventListener("click", () => { const box = $("[data-sit-more]", el); if (!box.hidden) { box.hidden = true; box.innerHTML = ""; S.apertiSit.delete(a.id); return; } S.apertiSit.add(a.id); box.hidden = false; box.innerHTML = situazioneMoreHTML(a); bindImpegnoActions(box, "coach"); bindNotaActions(box); bindParteActions(box); $$("[data-corr]", box).forEach(b => b.addEventListener("click", () => { S.coachArg = b.dataset.corr; S.selSit = S.coachArg; S.selChiusa = false; lsSet("top_sel_sit", S.selSit); lsSet("top_coach_arg", S.coachArg); S.coachOut = null; showView("coach"); renderCoachElenco(); renderCoachScheda(); })); $("[data-sintesi]", el).classList.remove("clamp2"); });
     $("[data-altro]", el).addEventListener("click", () => {
       const f = $("[data-sit-form]", el); const pa = impegniDi(a.id).filter(i => i.stato === "aperto" && i.tipo === "mia")[0];
       f.innerHTML = `<div class="row">${pa ? `<button class="small" data-x="fatto">Fatto: ${esc(pa.titolo.slice(0, 40))}</button>` : ""}<button class="small" data-x="parlato">Ho parlato</button><button class="small quiet" data-x="coach">Aggiorna il Coach</button><button class="small quiet" data-x="apri">Apri nel Coach</button><button class="small quiet" data-x="copia">Copia</button><button class="small quiet" data-x="arch">Archivia</button><button class="small quiet" data-x="chiudi">Chiudi</button></div>`;
@@ -826,12 +843,17 @@ function renderCoachElenco() {
   const q = ($("#coach-cerca").value || "").toLowerCase().trim();
   const list = argAperti().filter(a => matchQ(a.titolo + " " + (a.situazione || ""), q));
   const el = $("#coach-elenco");
-  el.innerHTML = list.length ? list.slice(0, q ? 50 : 8).map(a => `<button class="item" style="text-align:left;width:100%" data-arg="${a.id}"><div class="stripe ${a.id === S.coachArg ? "mia" : "altri"}"></div><div class="grow"><div class="t">${esc(a.titolo)}</div><div class="meta">${esc(AMBITI[a.ambito] || "")}${a.ultima_novita && a.ultima_novita.testo ? " · " + esc(a.ultima_novita.testo.slice(0, 80)) : ""}</div></div></button>`).join("") : `<div class="empty">Nessun argomento aperto. Scrivi una nota in Piano e analizzala.</div>`;
-  $$("[data-arg]", el).forEach(b => b.addEventListener("click", () => { S.coachArg = b.dataset.arg; lsSet("top_coach_arg", S.coachArg); S.coachOut = null; renderCoachElenco(); renderCoachScheda(); }));
+  const scheda = $("#coach-scheda"); if (scheda && scheda.parentElement === el && moduloAperto(scheda)) return; // non ridisegno l'elenco se stai scrivendo nella scheda aperta
+  if (scheda && scheda.parentElement === el) el.parentElement.after(scheda); // la scheda esce dall'elenco prima del ridisegno (altrimenti sparirebbe)
+  let vis = list.slice(0, q ? 50 : 8); const scelto = list.find(a => a.id === S.coachArg); if (scelto && !vis.includes(scelto)) vis = vis.concat([scelto]); // l'argomento scelto è sempre nell'elenco
+  el.innerHTML = list.length ? vis.map(a => `<button class="item" style="text-align:left;width:100%" data-arg="${a.id}" aria-expanded="${a.id === S.coachArg}"><div class="stripe ${a.id === S.coachArg ? "mia" : "altri"}"></div><div class="grow"><div class="t">${esc(a.titolo)}</div><div class="meta">${statoChip(a)} ${esc(AMBITI[a.ambito] || "")}${a.ultima_novita && a.ultima_novita.testo ? " · " + esc(a.ultima_novita.testo.slice(0, 80)) : ""}</div></div></button>`).join("") : `<div class="empty">Nessun argomento aperto. Scrivi una nota in Panoramica e organizzala.</div>`;
+  // v8.4: la scheda si apre SOTTO il titolo scelto (stesso punto), non in fondo all'elenco; una sola situazione aperta
+  if (scheda) { const b = $(`[data-arg="${S.coachArg}"]`, el); if (b) { b.after(scheda); scheda.classList.add("sotto-titolo"); } else { el.parentElement.after(scheda); scheda.classList.remove("sotto-titolo"); } }
+  $$("[data-arg]", el).forEach(b => b.addEventListener("click", () => { const id = b.dataset.arg; if (S.coachArg === id) { S.coachArg = null; } else { S.coachArg = id; S.selSit = id; S.selChiusa = false; lsSet("top_sel_sit", id); } lsSet("top_coach_arg", S.coachArg); S.coachOut = null; renderCoachElenco(); renderCoachScheda(); })); // una memoria sola tra Coach e Panoramica
 }
 function renderCoachScheda() {
   const root = $("#coach-scheda"); const a = S.coachArg && S.argomenti.get(S.coachArg); if (moduloAperto(root)) return;
-  if (!a) { root.innerHTML = `<div class="empty">Scegli un argomento per ragionarci con il Coach.</div>`; return; }
+  if (!a) { root.innerHTML = `<div class="empty">Tocca un argomento: la scheda si apre qui sotto il suo titolo.</div>`; return; }
   const imps = impegniDi(a.id); const aperti = imps.filter(i => i.stato === "aperto"); const fatti = imps.filter(i => i.stato !== "aperto").slice(-5);
   const note = Array.from(S.note.values()).filter(n => (n.argomento_ids || []).includes(a.id)).sort((x, y) => (y.data_nota + y.creato).localeCompare(x.data_nota + x.creato));
   const pa = prossimaAzione(a.id); const attese = aperti.filter(i => i.tipo !== "mia");
@@ -914,17 +936,31 @@ function hashTesto(t) { let h = 2166136261; const s = String(t); for (let i = 0;
 function improntaArgomento(a) { return hashTesto(JSON.stringify([a.titolo, a.situazione, a.ultima_novita, a.seguito_da, a.posso_aspettare, a.stato, a.ultimo_riscontro, a.correlati])); }
 function improntaNota(n) { return hashTesto(JSON.stringify([n.testo_originale, n.data_nota, n.parti, n.correzioni, n.argomento_ids, n.identita_incerte, n.tipo])); }
 function improntaImpegni(list) { return hashTesto(JSON.stringify(list.map(i => [i.id, i.titolo, i.tipo, i.da_chi, i.data, i.stato, i.esito, i.da_verificare]))); }
-function fontiCoach(a) { const note = noteDiArgomento(a.id); const imps = impegniDi(a.id); return [{ coll: "argomenti", id: a.id, h: improntaArgomento(a) }].concat(note.map(n => ({ coll: "note", id: n.id, h: improntaNota(n) })), [{ coll: "impegni", id: "*" + a.id, h: improntaImpegni(imps) }]); }
-async function fontiCambiate(fonti) { // rilegge dal server ogni fonte e dice quali sono cambiate rispetto all'impronta (gli impegni si confrontano sulla copia locale aggiornata dal polling)
-  const cambiate = []; const seqs = [];
-  for (const f of fonti) {
-    if (f.coll === "impegni") { const aId = f.id.slice(1); if (improntaImpegni(impegniDi(aId)) !== f.h) cambiate.push(f); continue; }
-    let d = mapOf(f.coll).get(f.id), seq;
-    if (S.db) { try { const sn = await S.db.collection(f.coll).doc(f.id).get(); d = sn.exists ? Object.assign({ id: f.id }, sn.data()) : null; seq = sn.seq; } catch (e) {} }
-    if (!d) { cambiate.push(f); continue; }
-    const h = f.coll === "argomenti" ? improntaArgomento(d) : improntaNota(d); if (h !== f.h) cambiate.push(f); if (seq !== undefined) seqs.push({ coll: f.coll, id: f.id, seq });
+// v8.4: le fonti di una risposta sono i DOCUMENTI letti con la loro versione (seq) presa PRIMA di costruire il prompt, più gli INSIEMI letti
+// (note collegate, impegni della situazione, tutte le lezioni, il profilo). Il server confronta versioni e insiemi con lo stato attuale nel momento
+// della scrittura: una nota nuova, un impegno cambiato o una lezione corretta nel frattempo (anche da un altro dispositivo) rendono la risposta «superata».
+async function fontiCoach(a) {
+  let vers = null; if (S.db && typeof S.db.versioni === "function") { try { const v = await S.db.versioni(); vers = v && v.vers; } catch (e) { vers = null; } } // aggiornamento fresco dal server prima di leggere
+  const note = noteDiArgomento(a.id); const imps = impegniDi(a.id); const lez = Array.from(S.lezioni.keys());
+  const elenco = [["argomenti", a.id]].concat(note.map(n => ["note", n.id]), imps.map(i => ["impegni", i.id]), lez.map(l => ["lezioni", l]), [["impostazioni", "profilo"]]);
+  const docs = []; const letti = new Map(); // senza versioni (adattatori senza polling) si rilegge ogni documento dal server e si confrontano i contenuti
+  for (const [coll, id] of elenco) {
+    let seq = vers ? vers.get(coll + "/" + id) : undefined;
+    if (seq === undefined && S.db) { try { const sn = await S.db.collection(coll).doc(id).get(); seq = sn.exists ? sn.seq : 0; if (sn.exists) letti.set(coll + "/" + id, Object.assign({ id }, sn.data())); } catch (e) { seq = undefined; } }
+    docs.push({ coll, id, seq: seq == null ? 0 : Number(seq) });
   }
-  return { cambiate, seqs };
+  const vedi = (coll, d) => letti.get(coll + "/" + d.id) || d;
+  return { docs, insiemi: { note: note.map(n => n.id), impegni: imps.map(i => i.id), lezioni: lez }, impronte: { argomento: improntaArgomento(vedi("argomenti", a)), note: note.map(n => improntaNota(vedi("note", n))).join("|"), impegni: improntaImpegni(imps.map(i => vedi("impegni", i))) } };
+}
+function fontiDiverse(prima, dopo) { // controllo lato client (il server ripete il confronto in modo atomico): versioni dei documenti letti e insiemi
+  const cambiate = []; const seqDopo = new Map(dopo.docs.map(d => [d.coll + "/" + d.id, d.seq]));
+  for (const d of prima.docs) if (seqDopo.get(d.coll + "/" + d.id) !== d.seq) cambiate.push({ coll: d.coll, id: d.id });
+  for (const k of ["note", "impegni", "lezioni"]) { const p = new Set(prima.insiemi[k]), q = new Set(dopo.insiemi[k]); for (const x of q) if (!p.has(x)) cambiate.push({ coll: k, id: x }); for (const x of p) if (!q.has(x)) cambiate.push({ coll: k, id: x }); }
+  // in più le impronte dei contenuti (come nella v8.2): valgono anche quando le versioni non sono disponibili
+  if (prima.impronte.impegni !== dopo.impronte.impegni && !cambiate.some(c => c.coll === "impegni")) cambiate.push({ coll: "impegni", id: "*" });
+  if (prima.impronte.argomento !== dopo.impronte.argomento && !cambiate.some(c => c.coll === "argomenti")) cambiate.push({ coll: "argomenti", id: "*" });
+  if (prima.impronte.note !== dopo.impronte.note && !cambiate.some(c => c.coll === "note")) cambiate.push({ coll: "note", id: "*" });
+  return cambiate;
 }
 function coachAuto(argId, opts) {
   opts = opts || {}; if (!S.sample || !S.argomenti.get(argId)) return Promise.resolve(false);
@@ -934,23 +970,24 @@ function coachAuto(argId, opts) {
   const run = async () => {
     await avvio; if (S.coachGen[argId] !== g) return false; // è già partita una richiesta più nuova
     const a = S.argomenti.get(argId); if (!a) return false;
-    const fonti = fontiCoach(a); const prompt = promptCoach(a); const contesto = S.contestoCoach[argId] || {};
+    const fonti = await fontiCoach(a); if (S.coachGen[argId] !== g) return false; const a1 = S.argomenti.get(argId) || a; const prompt = promptCoach(a1); const contesto = S.contestoCoach[argId] || {};
     let r;
     try { r = await chiediJSON(prompt, { cache: false }); }
     catch (e) { if (S.coachGen[argId] !== g) return false; const cod = (e && e.code) || "errore"; await scriviCampi("argomenti", argId, { coach_stato: "errore", coach_errore: cod }); renderAll(); if (opts.forza) toast("Il Coach non ha risposto (" + cod + "): i dati sono salvi, la scheda resta «da aggiornare»"); return false; }
     if (S.coachGen[argId] !== g) return false; // risposta superata da una richiesta più nuova in questo browser: non sovrascrive
     if (!S.argomenti.get(argId)) return false;
-    const ver = await fontiCambiate(fonti); const superata = ver.cambiate.length > 0;
-    const ultimo = { quando: nowIso(), in_breve: r.in_breve || "", prossima_mossa: r.prossima_mossa || "", da_aggiornare: superata, r, contesto: { completo: contesto.completo !== false, note_incluse: (contesto.note_incluse || []).length, note_escluse: contesto.note_escluse || [] }, fonti: ver.seqs };
+    const dopo = await fontiCoach(S.argomenti.get(argId) || a1); const cambiate = fontiDiverse(fonti, dopo); const superata = cambiate.length > 0;
+    const ultimo = { quando: nowIso(), in_breve: r.in_breve || "", prossima_mossa: r.prossima_mossa || "", da_aggiornare: superata, r, contesto: { completo: contesto.completo !== false, note_incluse: (contesto.note_incluse || []).length, note_escluse: contesto.note_escluse || [] }, fonti: { docs: fonti.docs, insiemi: fonti.insiemi } };
     if (superata) { // la risposta è nata su dati che nel frattempo sono cambiati (anche da un altro dispositivo): resta come «precedente», poi si riprova
-      ultimo.superata_per = ver.cambiate.map(f => f.coll + " " + f.id);
+      ultimo.superata_per = cambiate.map(f => f.coll + " " + f.id);
       const riprovo = S.coachGen[argId] === g && !opts.riprova; // una sola ripetizione automatica: se cambia ancora, resta «superata» finché la tocchi
       await scriviCampi("argomenti", argId, { ultimo_coach: ultimo, coach_stato: riprovo ? "in_corso" : "superato" }); renderAll();
       if (riprovo) setTimeout(() => { coachAuto(argId, { riprova: true }).catch(() => {}); }, 300);
       return false;
     }
     const campi = { ultimo_coach: ultimo, coach_stato: "ok", coach_errore: undefined };
-    if (r.posso_aspettare && r.posso_aspettare.si && r.posso_aspettare.fino_a) campi.posso_aspettare = r.posso_aspettare.fino_a;
+    // «posso aspettare» è una proposta del Coach: una nuova risposta che chiede di agire la toglie (non resta un'attesa vecchia a tenere lo stato «In attesa»)
+    if (r.posso_aspettare && r.posso_aspettare.si) campi.posso_aspettare = r.posso_aspettare.fino_a || "sì (il Coach non indica fino a quando)"; else campi.posso_aspettare = undefined;
     let esito; try { esito = await scriviCampi("argomenti", argId, campi); } catch (e) { if (e && e.code === "fonti_superate") { ultimo.da_aggiornare = true; ultimo.superata_per = (e.cambiate || []).map(f => f.coll + " " + f.id); await scriviCampi("argomenti", argId, { ultimo_coach: Object.assign({}, ultimo, { fonti: undefined }), coach_stato: "superato" }); renderAll(); if (S.coachGen[argId] === g && !opts.riprova) setTimeout(() => { coachAuto(argId, { riprova: true }).catch(() => {}); }, 300); return false; } throw e; }
     if (!esito) return false;
     // impegni contraddetti: segnalati, mai modificati in silenzio (solo per una risposta valida)
