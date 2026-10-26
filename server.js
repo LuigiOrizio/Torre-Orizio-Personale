@@ -333,10 +333,22 @@ function segnaDipendentiServer(coll, id, prevData, nextData) {
 }
 // Una risposta del Coach arriva con le versioni (seq) delle fonti che ha usato: se una fonte è cambiata nel frattempo, la scrittura viene rifiutata
 // (409 fonti_superate) e il client la conserva come «superata». Controllo atomico: avviene nello stesso passo della scrittura, sul server.
-function fontiSuperate(data, prev) { // solo quando la scrittura porta una NUOVA risposta del Coach (non per le modifiche normali della scheda)
-  const uc = data && data.ultimo_coach; if (!uc || !Array.isArray(uc.fonti) || !uc.fonti.length || data.coach_stato !== "ok") return null;
+function fontiSuperate(id, data, prev) { // solo quando la scrittura porta una NUOVA risposta del Coach (non per le modifiche normali della scheda)
+  const uc = data && data.ultimo_coach; if (!uc || !uc.fonti || data.coach_stato !== "ok") return null;
   if (prev && prev.ultimo_coach && prev.ultimo_coach.quando === uc.quando) return null;
-  const cambiate = uc.fonti.filter(f => { const d = db.docs[f.coll + "/" + f.id]; const cur = d && !d.deleted ? d.seq : 0; return Number(f.seq) !== cur; });
+  const seqDi = (coll, did) => { const d = db.docs[coll + "/" + did]; return d && !d.deleted ? d.seq : 0; };
+  if (Array.isArray(uc.fonti)) { if (!uc.fonti.length) return null; const cambiate = uc.fonti.filter(f => Number(f.seq) !== seqDi(f.coll, f.id)); return cambiate.length ? cambiate : null; } // forma v8.2 (solo documenti elencati)
+  // v8.4: la risposta dichiara i documenti letti (con la versione letta) e gli INSIEMI letti (note collegate, impegni della situazione, lezioni):
+  // il server confronta versioni e insiemi con lo stato attuale, in modo atomico con la scrittura. Una nota nuova, un impegno nuovo o una lezione corretta
+  // nel frattempo (anche da un altro dispositivo) rendono la risposta «superata».
+  const docs = Array.isArray(uc.fonti.docs) ? uc.fonti.docs : []; const ins = uc.fonti.insiemi || {}; const cambiate = [];
+  for (const f of docs) if (Number(f.seq) !== seqDi(f.coll, f.id)) cambiate.push({ coll: f.coll, id: f.id, motivo: "versione cambiata" });
+  const attuali = { note: [], impegni: [], lezioni: [] };
+  for (const [k, v] of Object.entries(db.docs)) { if (v.deleted) continue; const i = k.indexOf("/"); const coll = k.slice(0, i), did = k.slice(i + 1); const d = v.data || {};
+    if (coll === "note" && ((Array.isArray(d.argomento_ids) && d.argomento_ids.includes(id)) || (Array.isArray(d.parti) && d.parti.some(p => p && p.argomento_id === id)))) attuali.note.push(did);
+    if (coll === "impegni" && d.argomento_id === id) attuali.impegni.push(did);
+    if (coll === "lezioni") attuali.lezioni.push(did); }
+  for (const coll of ["note", "impegni", "lezioni"]) { if (!Array.isArray(ins[coll])) continue; const letti = new Set(ins[coll]); for (const did of attuali[coll]) if (!letti.has(did)) cambiate.push({ coll, id: did, motivo: "nuovo documento" }); for (const did of letti) if (!attuali[coll].includes(did)) cambiate.push({ coll, id: did, motivo: "non più collegato" }); }
   return cambiate.length ? cambiate : null;
 }
 
@@ -373,7 +385,7 @@ const server = http.createServer(async (req, res) => {
         if (!body || typeof body.data !== "object" || body.data === null || Array.isArray(body.data)) return json(res, 400, { error: "invalid_argument" });
         // `base` = versione (seq) che il client ha letto; 0 per un documento nuovo. Senza `base` (o con force) si sovrascrive esplicitamente.
         const prevDoc = db.docs[key]; const prevData = prevDoc && !prevDoc.deleted ? prevDoc.data : null; const cambiato = (coll === "note" || coll === "lezioni") && contenutoCambiato(coll, prevData, body.data);
-        if (coll === "argomenti") { const sup = fontiSuperate(body.data, prevData); if (sup) return json(res, 409, { error: "conflict", current: { exists: !!prevData, data: prevData, seq: prevDoc && !prevDoc.deleted ? prevDoc.seq : 0, fonti_superate: true, cambiate: sup } }); }
+        if (coll === "argomenti") { const sup = fontiSuperate(id, body.data, prevData); if (sup) return json(res, 409, { error: "conflict", current: { exists: !!prevData, data: prevData, seq: prevDoc && !prevDoc.deleted ? prevDoc.seq : 0, fonti_superate: true, cambiate: sup } }); }
         if (body.force === true || body.base === undefined) { const seq = putDoc(coll, id, body.data); const dip = cambiato ? segnaDipendentiServer(coll, id, prevData, body.data) : 0; return json(res, 200, { ok: true, seq, forced: body.force === true, dipendenti_segnati: dip }); }
         const base = Number(body.base); if (!Number.isInteger(base) || base < 0) return json(res, 400, { error: "invalid_argument" });
         const r = putDocIfVersion(coll, id, body.data, base);
