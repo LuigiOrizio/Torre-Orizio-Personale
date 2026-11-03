@@ -22,7 +22,8 @@ const SECURE_COOKIE = process.env.INSECURE_COOKIE !== "1"; // metti INSECURE_COO
 const SESSION_DAYS = Number(process.env.SESSION_DAYS || 180);
 const MAX_ASSET_BYTES = 20 * 1024 * 1024;
 const MAX_DOC_BYTES = 256 * 1024;
-const COLLS = ["argomenti", "impegni", "note", "lezioni", "obiettivi", "eventi", "giorni", "impostazioni"];
+const COLLS = ["argomenti", "impegni", "note", "lezioni", "obiettivi", "eventi", "giorni", "impostazioni", "decisioni"]; // v9: decisioni (scelta, aspettativa, esito, riesame)
+const VERSIONE = "9.0.1";
 
 if (!PASSPHRASE || PASSPHRASE.length < 8) { console.error("Imposta la variabile PASSPHRASE (almeno 8 caratteri) prima di avviare."); process.exit(1); }
 for (const d of [DATA_DIR, path.join(DATA_DIR, "assets"), path.join(DATA_DIR, "backups")]) fs.mkdirSync(d, { recursive: true });
@@ -55,6 +56,29 @@ if (Object.keys(db.docs).length === 0) {
   }
 }
 function putDoc(coll, id, data) { db.seq++; db.docs[coll + "/" + id] = { data, seq: db.seq }; markDb(); return db.seq; }
+// v9: fondamenti in biblioteca — le fonti primarie indicate da Luigi (prompt del 3/11/2026). Id fissi: se esistono già non vengono toccati
+// (nessun doppione, nessuna sovrascrittura di correzioni). Principio e limite sono riassunti del Coach dalla pagina letta il 3/11/2026: da rileggere prima di una citazione operativa.
+const FONDAMENTI = [
+  { id: "fond-mit-sd", titolo: "MIT Sloan — System Dynamics: About Us", url: "https://mitsloan.mit.edu/faculty/academic-groups/system-dynamics/about-us", ente: "MIT Sloan School of Management", tipo: "quadro concettuale", letta: "2026-11-03", principio: "Il system dynamics studia le relazioni tra le parti di un sistema e il modo in cui, insieme, producono il comportamento del sistema nel tempo (nato al MIT con Jay W. Forrester negli anni Cinquanta; usato in aziende, enti e governi).", limite: "La pagina è una presentazione del gruppo: non descrive il metodo (feedback, ritardi, accumuli) e non è una prova che una mappa qualitativa predica un esito. Una mappa qualitativa è distinta da un modello quantitativo calibrato." },
+  { id: "fond-mit-delay", titolo: "Rahmandad, Repenning, Sterman (2009) — Effects of Feedback Delay on Learning", url: "https://mitmgmtfaculty.mit.edu/jsterman/effectsoffeedback/", ente: "MIT (pagina dell'autore J. Sterman) · System Dynamics Review", tipo: "ricerca empirica", letta: "2026-11-03", principio: "I ritardi tra un'azione e l'osservazione dei suoi effetti ostacolano l'apprendimento: chi sottovaluta o sovrastima il ritardo impara più lentamente e può fissarsi su scelte peggiori. Prima di giudicare l'esito di una mossa, chiedersi quanto tempo serve perché l'effetto si veda.", limite: "Letto solo l'abstract, non l'articolo completo; studio su modelli di simulazione, non su casi di vendita di macchine tessili." },
+  { id: "fond-deming-pdsa", titolo: "The W. Edwards Deming Institute — PDSA Cycle", url: "https://deming.org/explore/pdsa/", ente: "The W. Edwards Deming Institute", tipo: "quadro concettuale", letta: "", principio: "Ciclo Plan-Do-Study-Act: definire obiettivo e aspettativa, fare una piccola prova, studiare la differenza tra atteso e osservato, adattare. (Riferimento indicato da Luigi; descrizione dal suo prompt.)", limite: "Pagina NON raggiunta dal Coach il 3/11/2026: principio da verificare sulla fonte prima di citarla. Un ciclo PDSA mostra se una prova ha funzionato in quel contesto, non che funzioni ovunque." },
+  { id: "fond-stanford-exp", titolo: "Stanford d.school — Experiment Expedition", url: "https://dschool.stanford.edu/tools/experiment-expedition", ente: "Stanford d.school", tipo: "strumento pratico", letta: "2026-11-03", principio: "Percorso guidato per mettere alla prova le assunzioni di una soluzione prima di definirla: individuare cosa testare, costruire un prototipo piccolo, sperimentare, raccogliere dati e dare senso ai risultati.", limite: "Strumento di lavoro in team (60–90 minuti con fogli stampati), non una prova empirica; da adattare a una prova personale breve." },
+  { id: "fond-oxford-ci", titolo: "University of Oxford — Focus / Continuous Improvement toolkit", url: "https://www.ox.ac.uk/about/how-we-are-run/change-continuous-improvement/toolkit", ente: "University of Oxford", tipo: "strumento pratico", letta: "2026-11-03", principio: "Raccolta di strumenti per fasi (Scope, Engage, Diagnose, Design, Implement and Sustain): chiarire il problema prima dell'intervento (es. 5 perché), mappare il processo, scegliere con matrice impatto/sforzo, rivedere gli esiti.", limite: "Toolkit interno dell'università, pensato per uffici e processi amministrativi; gli strumenti sono guide, non evidenze." },
+  { id: "fond-w3c-steps", titolo: "W3C WAI — Make Each Step Clear", url: "https://www.w3.org/WAI/WCAG2/supplemental/patterns/o1p04-clear-steps/", ente: "W3C Web Accessibility Initiative", tipo: "linee guida", letta: "2026-11-03", principio: "In un processo a più passaggi mostrare dove si è, cosa è fatto, cosa resta e le scelte importanti, così da riprendere anche dopo una distrazione.", limite: "Pattern supplementare (non requisito WCAG); indica cosa fare, non misura l'efficacia per una persona specifica." },
+  { id: "fond-w3c-instructions", titolo: "W3C WAI — Use Clear Step-by-step Instructions", url: "https://www.w3.org/WAI/WCAG2/supplemental/patterns/o4p07-step-instructions/", ente: "W3C Web Accessibility Initiative", tipo: "linee guida", letta: "2026-11-03", principio: "Istruzioni brevi, complete, collocate accanto a ciò che serve fare, con esempi quando utile: prevengono errori e permettono di completare l'attività da soli.", limite: "Pattern supplementare; non sostituisce una verifica d'uso con la persona." },
+  { id: "fond-nng-pd", titolo: "Nielsen Norman Group — Progressive Disclosure (J. Nielsen, 2006)", url: "https://www.nngroup.com/articles/progressive-disclosure/", ente: "Nielsen Norman Group", tipo: "quadro concettuale", letta: "2026-11-03", principio: "Mostrare prima poche opzioni essenziali e rinviare il resto a una vista secondaria aperta su richiesta: più facile da imparare, meno errori.", limite: "Oltre due livelli di apertura l'usabilità cala; l'articolo è del 2006 e non riguarda specificamente la neurodivergenza." },
+  { id: "fond-pon-batna", titolo: "Harvard PON — What is BATNA? (Guhan Subramanian)", url: "https://www.pon.harvard.edu/daily/batna/translate-your-batna-to-the-current-deal/", ente: "Harvard Law School, Program on Negotiation", tipo: "quadro concettuale", letta: "2026-11-03", principio: "La BATNA è ciò che farai se l'accordo non si chiude: confrontala con l'offerta reale su termini davvero comparabili e aggiornala quando arrivano informazioni nuove; serve a decidere se accettare, quanta forza hai e quando lasciare il tavolo.", limite: "Articolo divulgativo del PON; l'esempio della frase pronta nel Coach è un adattamento, non una tecnica documentata nella fonte." },
+];
+function seedFondamenti() {
+  let n = 0;
+  for (const f of FONDAMENTI) {
+    const k = "lezioni/" + f.id; if (db.docs[k]) continue; // esiste (anche se cancellata: non la ricreo)
+    putDoc("lezioni", f.id, { id: f.id, titolo: f.titolo, testo: `${f.titolo}\n${f.ente}\n${f.url}\nTipo: ${f.tipo}\n${f.letta ? "Letta dal Coach il " + f.letta : "NON letta dal Coach (pagina non raggiungibile il 2026-11-03)"}\n\nPrincipio: ${f.principio}\n\nLimite: ${f.limite}\n\nRiferimento primario indicato da Luigi (prompt del 3/11/2026). Il principio è un riassunto, non una citazione: rileggere la pagina prima di una citazione operativa.`, fonte: `${f.ente} · ${f.url}${f.letta ? " · letta il " + f.letta : " · da verificare"}`, tipo: "testo", asset_id: "", principi: [{ testo: f.principio, riferimento: f.tipo + (f.letta ? " · letta " + f.letta : " · NON verificata") }, { testo: "LIMITE: " + f.limite, riferimento: "limite" }], correzioni: [], istruzioni_sospette: false, creato: new Date().toISOString(), modificato: new Date().toISOString(), categoria: "fondamento (fonte primaria)", url: f.url, verificato: f.letta || "", da_verificare: !f.letta }); n++;
+  }
+  if (n) { flushNow(); console.log("Fondamenti aggiunti in biblioteca: " + n); }
+  return n;
+}
+if (process.env.SEED_FONDAMENTI !== "0") seedFondamenti();
 function delDoc(coll, id) { db.seq++; db.docs[coll + "/" + id] = { data: null, seq: db.seq, deleted: true }; markDb(); return db.seq; }
 // Scrittura condizionale: va a buon fine solo se la versione attuale del documento è quella che il client ha visto (base). 0 = documento nuovo.
 function putDocIfVersion(coll, id, data, base) { const cur = db.docs[coll + "/" + id]; const curSeq = cur && !cur.deleted ? cur.seq : 0; if (curSeq !== base) return { conflict: true, current: { exists: curSeq !== 0, data: curSeq ? cur.data : null, seq: curSeq } }; return { seq: putDoc(coll, id, data) }; }
@@ -307,7 +331,7 @@ ${lezioni.map(l => `## ${l.id} · ${l.titolo}${l.fonte ? " (" + String(l.fonte).
 function contenutoCambiato(coll, prev, next) {
   const J = x => JSON.stringify(x === undefined ? null : x);
   if (!prev) return false;
-  if (coll === "note") { const f = n => [n.testo_originale, n.data_nota, (n.parti || []).map(p => [p.argomento_id || "", p.testo || "", !!p.non_assegnata]), n.correzioni || [], n.argomento_ids || [], n.parte_resto || "", n.identita_incerte || [], n.tipo || "nota"]; return J(f(prev)) !== J(f(next)); }
+  if (coll === "note") { const f = n => [n.testo_originale, n.data_nota, (n.parti || []).map(p => [p.argomento_id || "", p.testo || "", !!p.non_assegnata]), n.correzioni || [], n.argomento_ids || [], n.parte_resto || "", n.identita_incerte || [], n.tipo || "nota", (n.allegati || []).map(a => [a.id, a.testo_corretto || "", a.estrazione || ""])]; return J(f(prev)) !== J(f(next)); }
   if (coll === "lezioni") return J(prev.principi || []) !== J(next.principi || []) || J(prev.correzioni || []) !== J(next.correzioni || []) || prev.testo !== next.testo;
   return false;
 }
@@ -328,6 +352,14 @@ function segnaDipendentiServer(coll, id, prevData, nextData) {
     const usaCoach = coll === "note" ? toccati.has(aId) : true;
     if (a.ultimo_coach && !a.ultimo_coach.da_aggiornare && usaCoach) { na.ultimo_coach = Object.assign({}, a.ultimo_coach, { da_aggiornare: true, da_aggiornare_per: (coll === "note" ? "nota " : "lezione ") + id + " cambiata il " + quando }); cambia = true; }
     if (cambia) { putDoc("argomenti", aId, na); n++; }
+  }
+  // v9: una decisione conserva le fonti (note e lezioni) su cui è stata presa; se una cambia, la decisione va «rivista», ma non viene riscritta
+  for (const [k, v] of Object.entries(db.docs)) {
+    if (v.deleted || !k.startsWith("decisioni/")) continue; const d = v.data || {}; const f = d.fonti || {};
+    const dip = coll === "note" ? (f.note || []).includes(id) : (f.lezioni || []).includes(id);
+    if (!dip || d.da_rivedere) continue;
+    const nd = Object.assign({}, d, { da_rivedere: true, da_rivedere_per: (coll === "note" ? "nota " : "lezione ") + id + " cambiata il " + quando, versioni: (d.versioni || []).concat([{ quando, cosa: "Da rivedere: " + (coll === "note" ? "una nota" : "una lezione") + " usata per decidere è cambiata" }]) });
+    putDoc("decisioni", k.slice(10), nd); n++;
   }
   return n;
 }
@@ -368,7 +400,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (p === "/api/logout" && req.method === "POST") { clearSession(req, res); return json(res, 200, { ok: true }); }
     if (p === "/login.html" || p === "/manifest.webmanifest" || p === "/sw.js" || p.startsWith("/icons/") || p === "/login.js") return serveStatic(res, p);
-    if (p === "/api/me") return json(res, sess ? 200 : 401, sess ? { ok: true, coach: !!ANTHROPIC_API_KEY, model: ANTHROPIC_MODEL } : { error: "unauthorized" });
+    if (p === "/api/me") return json(res, sess ? 200 : 401, sess ? { ok: true, coach: !!ANTHROPIC_API_KEY, model: ANTHROPIC_MODEL, versione: VERSIONE, servizi: { dati: true, allegati: true, coach: !!ANTHROPIC_API_KEY, ricerca_web: !!ANTHROPIC_API_KEY, lettura_pagine: !!ANTHROPIC_API_KEY && WEB_FETCH_MAX > 0, promemoria: false, email: false, calendario: false, team: false } } : { error: "unauthorized" });
     // --- tutto il resto richiede la sessione ---
     if (!sess) { if (p === "/" || p === "/index.html") { res.writeHead(302, { Location: "/login.html" }); return res.end(); } return json(res, 401, { error: "unauthorized" }); }
     if (p === "/" || p === "/index.html") return serveStatic(res, "/index.html");
@@ -429,4 +461,4 @@ const server = http.createServer(async (req, res) => {
   } catch (e) { console.error(e); return json(res, 500, { error: "server_error" }); }
 });
 function serveStatic(res, p) { const f = path.join(PUBLIC_DIR, path.normalize(p).replace(/^(\.\.[/\\])+/, "")); if (!f.startsWith(PUBLIC_DIR) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) return json(res, 404, { error: "not_found" }); const ext = path.extname(f); res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream", "Cache-Control": ext === ".html" || ext === ".js" || ext === ".webmanifest" ? "no-cache" : "public, max-age=86400" }); fs.createReadStream(f).pipe(res); }
-server.listen(PORT, () => console.log(`Torre Orizio Personale in ascolto sulla porta ${PORT} · dati in ${DATA_DIR} · Coach ${ANTHROPIC_API_KEY ? "configurato (" + ANTHROPIC_MODEL + ")" : "NON configurato: manca ANTHROPIC_API_KEY"}`));
+server.listen(PORT, () => console.log(`Torre Orizio Personale v${VERSIONE} in ascolto sulla porta ${PORT} · dati in ${DATA_DIR} · Coach ${ANTHROPIC_API_KEY ? "configurato (" + ANTHROPIC_MODEL + ")" : "NON configurato: manca ANTHROPIC_API_KEY"}`));

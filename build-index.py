@@ -22,7 +22,7 @@ index = f"""<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>{title}</title>
-<meta name="description" content="Spazio personale privato: Piano, Coach e Storia.">
+<meta name="description" content="Spazio personale privato: Esamina, Coach e Storia.">
 <meta name="theme-color" content="#2d6a7c" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#171a1e" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">

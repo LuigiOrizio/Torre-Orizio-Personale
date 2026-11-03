@@ -1,12 +1,16 @@
 {
   "name": "torre-orizio-personale",
-  "version": "1.0.0",
+  "version": "9.0.1",
   "private": true,
-  "description": "Spazio personale privato: Piano, Coach e Storia. Server senza dipendenze.",
-  "engines": { "node": ">=18" },
+  "description": "Spazio personale privato: Esamina, Coach e Storia. Sistema di supporto alle decisioni. Server senza dipendenze.",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node server.js",
     "build": "python3 build-index.py page-source.html",
-    "test": "python3 test/e2e.py"
+    "test": "node test/verifica-funzioni.cjs . && node test/verifica-funzioni-v82.cjs . && node test/verifica-server-http.cjs . && node test/verifica-aggiuntiva-v83.cjs . && node test/verifica-coda-riapertura-v84.cjs . && node test/verifica-invio-interrotto-v841.cjs . && node test/verifica-invii-concorrenti.cjs . && node test/ricerca-v8.js public/app.js",
+    "test:browser": "bash test/avvia-collaudo.sh",
+    "test:v9": "python3 test/e2e-v9.py"
   }
 }
