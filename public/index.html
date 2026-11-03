@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Torre Orizio Personale</title>
-<meta name="description" content="Spazio personale privato: Piano, Coach e Storia.">
+<meta name="description" content="Spazio personale privato: Esamina, Coach e Storia.">
 <meta name="theme-color" content="#2d6a7c" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#171a1e" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -41,7 +41,7 @@
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
-body { background: var(--bg); color: var(--fg); font-family: var(--font); font-size: var(--fs); line-height: 1.55; margin: 0; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font); font-size: var(--fs); line-height: var(--lh, 1.55); margin: 0; }
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
 a { color: var(--accent); }
 button, input, textarea, select { font: inherit; color: inherit; }
@@ -148,6 +148,26 @@ ul.plain { margin: 0; padding-left: 20px; }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: .95em; }
 .kv dt { color: var(--muted); } .kv dd { margin: 0; min-width: 0; }
 .pending-mark { color: var(--wait); font-size: .78em; font-weight: 700; }
+/* v9: sistema decisionale — blocchi brevi, un'azione in evidenza, mappa come elenco */
+.rapido { display: flex; flex-direction: column; gap: 6px; }
+.rapido .fai { font-weight: 700; font-size: 1.05em; }
+.blocco { display: flex; flex-direction: column; gap: 3px; padding: 8px 0; border-top: 1px solid var(--line); }
+.blocco:first-child { border-top: none; }
+.blocco .n { font-size: .74em; letter-spacing: .05em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+.micro { border: 1px solid var(--accent); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; background: var(--surface); }
+.micro .tag { font-size: .74em; font-weight: 700; color: var(--accent); }
+.alt { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; }
+.alt .t { font-weight: 700; }
+.mappa { display: flex; flex-direction: column; gap: 6px; }
+.mappa .nodo { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; border-left: 3px solid var(--line); }
+.mappa .nodo.doc { border-left-color: var(--ok); } .mappa .nodo.ipo { border-left-color: var(--wait); }
+.mappa .freccia { font-size: .92em; }
+.mappa .freccia .tipo { font-size: .76em; font-weight: 700; padding: 1px 6px; border-radius: 999px; background: var(--line); margin-left: 4px; }
+.mappa .freccia .tipo.ipo { background: var(--wait-soft); color: var(--wait); } .mappa .freccia .tipo.doc { background: var(--ok-soft); color: var(--ok); }
+.allegato { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; font-size: .85em; background: var(--surface); }
+.dec { border: 1px solid var(--accent); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }
+.dec .t { font-weight: 700; }
+html.contrasto-alto { --line: #8a8f96; --muted: #3c434b; }
 </style>
 </head>
 <body>
@@ -155,7 +175,7 @@ ul.plain { margin: 0; padding-left: 20px; }
   <div class="wrap">
     <div class="brand">Torre Orizio · Personale</div>
     <nav class="tabs" role="tablist" aria-label="Aree">
-      <button role="tab" id="tab-piano" aria-selected="true" data-view="piano">Piano</button>
+      <button role="tab" id="tab-piano" aria-selected="true" data-view="piano">Esamina</button>
       <button role="tab" id="tab-coach" aria-selected="false" data-view="coach">Coach</button>
       <button role="tab" id="tab-storia" aria-selected="false" data-view="storia">Storia</button>
     </nav>
@@ -169,15 +189,17 @@ ul.plain { margin: 0; padding-left: 20px; }
   <!-- PIANO -->
   <section class="view" id="view-piano">
     <div class="card note-box">
-      <label for="nota">Scrivi o detta cosa è successo</label>
-      <textarea id="nota" placeholder="Anche incompleto, anche con errori, anche su più argomenti. Per dettare usa il microfono della tastiera."></textarea>
+      <label for="nota">Scrivi o aggiungi ciò che vuoi tenere presente</label>
+      <textarea id="nota" placeholder="Anche incompleto, anche con errori, anche su più argomenti. Un link resta un link. Per dettare usa il microfono della tastiera."></textarea>
+      <div id="nota-allegati" class="row" hidden></div>
       <div class="row between">
-        <div class="row"><label for="nota-data" style="margin:0">Data</label><input type="date" id="nota-data" style="width:auto"></div>
-        <div class="row"><button id="btn-salva-solo">Salva solo</button><button class="primary" id="btn-salva-analizza">Salva e analizza</button></div>
+        <div class="row"><label for="nota-data" style="margin:0">Data</label><input type="date" id="nota-data" style="width:auto"><input type="file" id="nota-file" multiple accept="application/pdf,image/jpeg,image/png,image/webp,text/plain,text/markdown,.txt,.md" hidden><button class="small quiet" id="btn-allega">+ Allega</button></div>
+        <div class="row"><button class="small quiet" id="btn-salva-solo">Salva senza organizzare</button><button class="primary" id="btn-salva-analizza">Salva</button></div>
       </div>
       <div id="nota-stato" class="tiny" hidden></div>
       <div id="proposte" class="proposals" hidden></div>
     </div>
+    <div id="dove-eravamo"></div>
 
     <div class="row between">
       <div class="seg" role="group" aria-label="Livello del piano">
@@ -195,6 +217,20 @@ ul.plain { margin: 0; padding-left: 20px; }
     <details id="impostazioni">
       <summary>Impostazioni, annulla e backup</summary>
       <div class="inner">
+        <div class="eyebrow">Risposte del Coach</div>
+        <div class="row"><div class="seg" role="group" aria-label="Livello di risposta"><button data-liv="rapido" aria-pressed="false">Rapido</button><button data-liv="standard" aria-pressed="true">Standard</button></div><span class="tiny">Rapido: cosa fare, una frase pronta, il prossimo passo. Standard: sintesi in cinque blocchi e una microlezione. Puoi cambiarlo anche scrivendo «sono di fretta» o «spiegami meglio».</span></div>
+        <details class="flat" id="quadro-box"><summary>Il mio quadro: obiettivi, limiti, risorse <span class="tiny" id="quadro-stato"></span></summary><div class="inner">
+          <p class="tiny">Il Coach lo usa solo quando una scelta lo tocca. Modificabile quando vuoi; niente qui viene dedotto da un singolo episodio.</p>
+          <label for="q-ottenere">Cosa voglio ottenere (obiettivi e priorità)</label><textarea id="q-ottenere" style="min-height:72px" placeholder="Es. chiudere le trattative italiane aperte entro l'anno; tenere le sere libere…"></textarea>
+          <label for="q-proteggere">Cosa voglio proteggere (valori dichiarati, impegni, limiti)</label><textarea id="q-proteggere" style="min-height:72px" placeholder="Es. non promettere date senza conferma dei tecnici; allenamento tre volte a settimana…"></textarea>
+          <label for="q-risorse">Risorse e vincoli (tempo, denaro, energia, autorità)</label><textarea id="q-risorse" style="min-height:72px" placeholder="Es. posso proporre ma non assegnare lavoro in officina…"></textarea>
+          <div class="row"><button class="small primary" id="q-salva">Salva il quadro</button><span class="tiny" id="q-msg"></span></div>
+        </div></details>
+        <div class="eyebrow">Lettura</div>
+        <div class="form">
+          <div><label>Interlinea</label><div class="seg" role="group" aria-label="Interlinea"><button data-lh="1.55" aria-pressed="true">Normale</button><button data-lh="1.85" aria-pressed="false">Ampia</button></div></div>
+          <div><label>Aspetto</label><div class="seg" role="group" aria-label="Aspetto"><button data-tema="auto" aria-pressed="true">Auto</button><button data-tema="light" aria-pressed="false">Chiaro</button><button data-tema="dark" aria-pressed="false">Scuro</button></div></div>
+        </div>
         <div class="form">
           <div><label for="imp-max">Azioni in vista oltre la priorità</label><select id="imp-max"><option value="0">Nessuna</option><option value="1">Una</option><option value="2" selected>Due</option><option value="3">Tre</option></select></div>
           <div><label>Dimensione del testo</label><div class="row"><button class="small" id="fs-minus">A−</button><button class="small" id="fs-plus">A+</button><span class="tiny" id="fs-val"></span></div></div>
@@ -202,7 +238,8 @@ ul.plain { margin: 0; padding-left: 20px; }
         <div class="row"><button class="small" id="btn-undo">Annulla ultima modifica</button><button class="small" id="btn-backup">Scarica backup</button><label style="margin:0;display:inline-flex;align-items:center"><input type="file" id="backup-file" accept="application/json" hidden><button class="small" id="btn-restore">Ripristina da backup…</button></label></div>
         <div id="restore-area"></div>
         <details class="flat"><summary class="tiny">Cronologia delle modifiche in questa sessione</summary><div class="inner versions" id="cronologia"></div></details>
-        <p class="tiny">Dati e allegati sono salvati sul server di claude.ai e leggibili solo dal proprietario di questa pagina. Nessuna chiave è conservata nel browser. Niente viene inviato a colleghi, clienti o agenti.</p>
+        <details class="flat"><summary class="tiny">Cosa è collegato e cosa no</summary><div class="inner" id="collegamenti-box"></div></details>
+        <p class="tiny">Dati e allegati sono salvati sul tuo server e leggibili solo con la tua parola d'accesso. Nessuna chiave è conservata nel browser. Niente viene inviato a colleghi, clienti o agenti; nessun messaggio, incarico o promemoria parte da qui.</p>
       </div>
     </details>
   </section>
@@ -225,6 +262,7 @@ ul.plain { margin: 0; padding-left: 20px; }
           <div class="full"><label for="lez-testo">Oppure incolla il testo</label><textarea id="lez-testo" placeholder="Testo della lezione o appunti"></textarea></div>
           <div class="full row"><button class="primary" id="btn-lez-salva">Salva lezione</button><span id="lez-stato" class="tiny"></span></div>
         </div>
+        <div id="materiali-attesi" class="tiny"></div>
         <div id="lezioni-elenco" class="list"></div>
       </div>
     </details>
@@ -232,11 +270,12 @@ ul.plain { margin: 0; padding-left: 20px; }
 
   <!-- STORIA -->
   <section class="view" id="view-storia" hidden>
-    <input type="text" id="storia-cerca" placeholder="Cerca in note, esiti, argomenti…">
+    <input type="text" id="storia-cerca" placeholder="Cerca per parole, persone, macchine, decisioni…">
     <div class="seg" role="group" aria-label="Filtro storia">
       <button data-sf="tutto" aria-pressed="true">Tutto</button>
       <button data-sf="note" aria-pressed="false">Note</button>
       <button data-sf="esiti" aria-pressed="false">Esiti</button>
+      <button data-sf="decisioni" aria-pressed="false">Decisioni</button>
       <button data-sf="archiviati" aria-pressed="false">Archiviati</button>
     </div>
     <div id="storia-elenco" class="list"></div>

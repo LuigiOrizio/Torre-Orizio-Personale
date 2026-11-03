@@ -1,95 +1,86 @@
-// Adattatore: espone window.claude.use(...) come nel viewer di claude.ai, ma parla con il server di Torre Orizio Personale.
+// Torre Orizio Personale — platform.js (v9): adattatore tra la pagina (nata su claude.ai) e questo server.
+// Espone `claude.use(nome)` per: db (documenti con versioni e conflitti), user, sample (Coach via /api/coach), assets (allegati, ripristino), downloads.
+// Nessuna chiave nel browser. Le modifiche degli altri dispositivi arrivano con un polling leggero di /api/changes.
 (() => {
   "use strict";
-  const COLLS = ["argomenti", "impegni", "note", "lezioni", "obiettivi", "eventi", "giorni", "impostazioni"];
-  const cache = new Map(); // coll -> Map(id -> data)
-  const vers = new Map();  // "coll/id" -> seq (versione del documento come l'ha vista questo client)
-  for (const c of COLLS) cache.set(c, new Map());
-  let seq = 0, serverFresh = false, loaded = false, polling = null, pollDelay = 4000;
-  const collListeners = new Map(); // coll -> Set(fn)
-  const docListeners = new Map();  // "coll/id" -> Set(fn)
-  let me = null;
-
-  const api = async (method, url, body, headers) => {
-    const r = await fetch(url, { method, headers: Object.assign(body && !(body instanceof Blob) ? { "content-type": "application/json" } : {}, headers || {}), body: body ? (body instanceof Blob ? body : JSON.stringify(body)) : undefined, credentials: "same-origin" });
-    if (r.status === 401) { location.href = "/login.html"; throw { code: "revoked", message: "sessione scaduta" }; }
-    let data = null; try { data = await r.json(); } catch (e) {}
-    if (!r.ok) throw Object.assign({ code: (data && data.error) || "unavailable", message: "HTTP " + r.status }, data || {});
-    return data;
-  };
-  const snapOf = (coll, id, d) => ({ id, exists: d != null, seq: vers.get(coll + "/" + id) || 0, data: () => d == null ? undefined : JSON.parse(JSON.stringify(d)), metadata: { fromCache: !serverFresh, hasPendingWrites: false } });
-  const emitColl = (coll) => { const m = cache.get(coll); const docs = Array.from(m.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([id, d]) => snapOf(coll, id, d)); for (const fn of (collListeners.get(coll) || [])) { try { fn({ docs, size: docs.length, empty: !docs.length, docChanges: () => [], metadata: { fromCache: !serverFresh, hasPendingWrites: false } }); } catch (e) { console.error(e); } } };
-  const emitDoc = (coll, id) => { for (const fn of (docListeners.get(coll + "/" + id) || [])) { try { fn(snapOf(coll, id, cache.get(coll).get(id) ?? null)); } catch (e) { console.error(e); } } };
-  async function poll() {
-    try {
-      const r = await api("GET", "/api/changes?since=" + seq);
-      const touched = new Set();
-      for (const c of r.changes) { if (!cache.has(c.coll)) continue; if (c.deleted) { cache.get(c.coll).delete(c.id); vers.delete(c.coll + "/" + c.id); } else { cache.get(c.coll).set(c.id, c.data); vers.set(c.coll + "/" + c.id, c.seq); } touched.add(c.coll); emitDoc(c.coll, c.id); }
-      seq = r.seq; const wasFresh = serverFresh; serverFresh = true; loaded = true; pollDelay = 4000;
-      if (!wasFresh) for (const c of COLLS) emitColl(c); else for (const c of touched) emitColl(c);
-    } catch (e) { if (serverFresh) { serverFresh = false; for (const c of COLLS) emitColl(c); } pollDelay = Math.min(30000, pollDelay * 1.5); }
-    clearTimeout(polling); polling = setTimeout(poll, document.visibilityState === "visible" ? pollDelay : 30000);
+  const POLL_MS = 5000;
+  const seqDi = new Map(); // "coll/id" -> versione (seq) vista
+  const docs = new Map();  // "coll/id" -> data (copia locale allineata al server)
+  const ascoltatori = new Map(); // coll -> [fn]
+  const ascoltatoriDoc = new Map(); // "coll/id" -> [fn]
+  let ultimoSeq = 0, primaLettura = false, pollTimer = null, inPoll = false, info = null;
+  const err = (code, extra) => Object.assign(new Error(code), { code }, extra || {});
+  async function api(path, opts) {
+    opts = opts || {}; const r = await fetch(path, Object.assign({ credentials: "same-origin" }, opts, opts.body && typeof opts.body !== "string" && !(opts.body instanceof Blob) ? { body: JSON.stringify(opts.body), headers: Object.assign({ "content-type": "application/json" }, opts.headers || {}) } : {}));
+    let j = null; try { j = await r.json(); } catch (e) { j = null; }
+    if (r.status === 401) { location.href = "/login.html"; throw err("unauthorized"); }
+    if (!r.ok) throw err((j && j.error) || ("http_" + r.status), { status: r.status, current: j && j.current, message: j && j.message });
+    return j;
   }
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { clearTimeout(polling); poll(); } });
-  window.addEventListener("online", () => { clearTimeout(polling); poll(); });
-
-  const docRef = (coll, id) => ({
-    id, path: coll + "/" + id,
-    get: async () => { const r = await api("GET", "/api/doc/" + coll + "/" + encodeURIComponent(id)); if (r.exists) { cache.get(coll).set(id, r.data); vers.set(coll + "/" + id, r.seq); } else { vers.set(coll + "/" + id, 0); } return snapOf(coll, id, r.exists ? r.data : null); },
-    // Scrittura condizionale: il server accetta solo se la versione è ancora quella letta da questo client; altrimenti 409 → {code:"conflict", current}.
-    set: async (data, o) => {
-      const k = coll + "/" + id; const base = vers.has(k) ? vers.get(k) : 0;
-      let r; try { r = await api("PUT", "/api/doc/" + coll + "/" + encodeURIComponent(id), o && o.force ? { data, force: true } : { data, base }); }
-      catch (e) { if (e.code === "conflict" && e.current) { if (e.current.exists) { cache.get(coll).set(id, e.current.data); vers.set(k, e.current.seq); } throw { code: "conflict", message: "modificato altrove", current: e.current }; } throw e; }
-      cache.get(coll).set(id, JSON.parse(JSON.stringify(data))); vers.set(k, r.seq); emitDoc(coll, id); emitColl(coll); clearTimeout(polling); polling = setTimeout(poll, 300);
+  function notifica(coll) { for (const fn of ascoltatori.get(coll) || []) { try { fn(snapshot(coll)); } catch (e) { console.error(e); } } }
+  function notificaDoc(key) { for (const fn of ascoltatoriDoc.get(key) || []) { try { const d = docs.get(key); fn({ exists: d !== undefined, data: () => d, id: key.split("/")[1] }); } catch (e) { console.error(e); } } }
+  function snapshot(coll) { const out = []; for (const [k, v] of docs) if (k.startsWith(coll + "/")) out.push({ id: k.slice(coll.length + 1), exists: true, data: () => v }); return { docs: out, metadata: { fromCache: !primaLettura } }; }
+  function applica(ch) { const key = ch.coll + "/" + ch.id; if ((seqDi.get(key) || 0) > ch.seq) return false; seqDi.set(key, ch.seq); if (ch.deleted) docs.delete(key); else docs.set(key, ch.data); return true; }
+  async function aggiorna() { // legge le modifiche dal server e avvisa chi ascolta
+    if (inPoll) return; inPoll = true;
+    try { const r = await api("/api/changes?since=" + ultimoSeq); const toccati = new Set(); const toccatiDoc = new Set(); for (const ch of r.changes || []) { if (applica(ch)) { toccati.add(ch.coll); toccatiDoc.add(ch.coll + "/" + ch.id); } } ultimoSeq = Math.max(ultimoSeq, r.seq || 0); const prima = !primaLettura; primaLettura = true; if (prima) for (const c of ascoltatori.keys()) toccati.add(c); for (const c of toccati) notifica(c); for (const k of toccatiDoc) notificaDoc(k); }
+    catch (e) { if (e.code !== "unauthorized") console.warn("changes", e.code || e); }
+    finally { inPoll = false; }
+  }
+  function avviaPoll() { if (pollTimer) return; const tick = () => { pollTimer = setTimeout(async () => { if (!document.hidden) await aggiorna(); tick(); }, POLL_MS); }; tick(); document.addEventListener("visibilitychange", () => { if (!document.hidden) aggiorna(); }); window.addEventListener("online", aggiorna); }
+  const db = {
+    collection(coll) {
+      return {
+        doc(id) { return docRef(coll, id); },
+        onSnapshot(fn, onErr) { if (!ascoltatori.has(coll)) ascoltatori.set(coll, []); ascoltatori.get(coll).push(fn); if (primaLettura) fn(snapshot(coll)); return () => { const l = ascoltatori.get(coll) || []; const i = l.indexOf(fn); if (i >= 0) l.splice(i, 1); }; },
+      };
     },
-    update: async (data) => { const cur = cache.get(coll).get(id); if (!cur) throw { code: "invalid_argument", message: "documento assente" }; await docRef(coll, id).set(Object.assign({}, cur, data)); },
-    delete: async () => { await api("DELETE", "/api/doc/" + coll + "/" + encodeURIComponent(id)); cache.get(coll).delete(id); vers.delete(coll + "/" + id); emitDoc(coll, id); emitColl(coll); },
-    onSnapshot: (fn) => { const k = coll + "/" + id; if (!docListeners.has(k)) docListeners.set(k, new Set()); docListeners.get(k).add(fn); if (loaded) setTimeout(() => emitDoc(coll, id), 0); return () => docListeners.get(k).delete(fn); },
-    collection: () => { throw new TypeError("sottocollezioni non supportate"); },
-  });
-  const collRef = (coll) => ({ path: coll, doc: (id) => docRef(coll, id || ("g" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8))), onSnapshot: (fn) => { if (!collListeners.has(coll)) collListeners.set(coll, new Set()); collListeners.get(coll).add(fn); if (loaded) setTimeout(() => emitColl(coll), 0); return () => collListeners.get(coll).delete(fn); }, get: async () => ({ docs: [] }) });
-  // v8.4: versioni dei documenti come le vede questo client dopo un aggiornamento fresco dal server (per legare una risposta del Coach a ciò che ha letto)
-  const versioni = async () => { clearTimeout(polling); await poll(); return { seq, vers: new Map(vers) }; };
-  const dbApi = { versioni, doc: (p) => { const [c, id] = p.split("/"); if (!COLLS.includes(c) || !id) throw new TypeError("percorso non valido: " + p); return docRef(c, id); }, collection: (c) => { if (!COLLS.includes(c)) throw new TypeError("collezione non valida: " + c); return collRef(c); } };
-
-  const toB64 = (blob) => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(",")[1]); fr.onerror = rej; fr.readAsDataURL(blob); });
-  const sample = async (input, opts) => {
-    opts = opts || {}; let images = [];
-    if (opts.images) { const list = opts.images instanceof Blob ? [opts.images] : Array.from(opts.images); for (const b of list) images.push({ media_type: b.type || "image/jpeg", data: await toB64(b) }); }
-    let r; try { r = await api("POST", "/api/coach", { input, json: false, images }); } catch (e) { throw { code: e.code === "not_configured" ? "sampling_disabled" : e.code || "upstream_error", message: e.message || "" }; }
-    if (opts.onText) { try { opts.onText({ text: r.text, delta: r.text }); } catch (e) {} }
-    return { text: r.text, truncated: !!r.truncated, modelTierApplied: "default" };
+    doc(path) { const i = path.indexOf("/"); return docRef(path.slice(0, i), path.slice(i + 1)); },
+    async versioni() { await aggiorna(); return { vers: new Map(seqDi), seq: ultimoSeq }; },
   };
-  sample.json = async (input, opts) => {
-    opts = opts || {}; let images = [];
-    if (opts.images) { const list = opts.images instanceof Blob ? [opts.images] : Array.from(opts.images); for (const b of list) images.push({ media_type: b.type || "image/jpeg", data: await toB64(b) }); }
-    let r; try { r = await api("POST", "/api/coach", { input, json: true, images }); } catch (e) { throw { code: e.code === "not_configured" ? "sampling_disabled" : e.code || "upstream_error", message: e.message || "", text: e.text }; }
-    return r.value;
-  };
-  sample.limits = async () => ({ maxPromptBytes: 262144, images: { maxCount: 4, maxInputBytes: 20 * 1024 * 1024, mediaTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"] } });
-
+  function docRef(coll, id) {
+    const key = coll + "/" + id;
+    return {
+      async get() { const r = await api("/api/doc/" + coll + "/" + encodeURIComponent(id)); seqDi.set(key, r.seq || 0); if (r.exists) docs.set(key, r.data); else docs.delete(key); return { exists: !!r.exists, seq: r.seq || 0, id, data: () => r.data }; },
+      async set(data, opts) { // base = versione vista; il server rifiuta (409) se nel frattempo è cambiata; con force si sovrascrive esplicitamente
+        const body = { data }; if (opts && opts.force) body.force = true; else body.base = seqDi.has(key) ? seqDi.get(key) : 0;
+        try { const r = await api("/api/doc/" + coll + "/" + encodeURIComponent(id), { method: "PUT", body }); seqDi.set(key, r.seq); docs.set(key, data); notificaDoc(key); aggiorna().catch(() => {}); return r; } // il cursore globale NON avanza qui: modifiche di altri dispositivi con seq più basso non devono essere saltate
+        catch (e) { if (e.code === "conflict") { const cur = e.current || {}; seqDi.set(key, cur.seq || 0); if (cur.exists) docs.set(key, cur.data); else docs.delete(key); throw err("conflict", { current: cur }); } throw e; }
+      },
+      async delete() { const r = await api("/api/doc/" + coll + "/" + encodeURIComponent(id), { method: "DELETE" }); docs.delete(key); seqDi.set(key, r.seq); aggiorna().catch(() => {}); return r; },
+      onSnapshot(fn, onErr) { if (!ascoltatoriDoc.has(key)) ascoltatoriDoc.set(key, []); ascoltatoriDoc.get(key).push(fn); if (primaLettura) notificaDoc(key); return () => {}; },
+    };
+  }
+  const user = { async isOwner() { return true; }, id: "proprietario" };
+  const fileToB64 = (file) => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(",")[1] || ""); fr.onerror = rej; fr.readAsDataURL(file); });
+  async function sample(prompt, opts) { // Coach: la chiave resta sul server
+    opts = opts || {}; const body = { input: prompt, json: !!opts.json };
+    if (opts.images) { const list = Array.isArray(opts.images) ? opts.images : [opts.images]; body.images = []; for (const im of list.slice(0, 4)) body.images.push({ media_type: im.type || "image/jpeg", data: await fileToB64(im) }); }
+    if (opts.signal && opts.signal.aborted) throw err("cancelled");
+    let r; try { r = await api("/api/coach", { method: "POST", body, signal: opts.signal }); } catch (e) { if (e.name === "AbortError") throw err("cancelled"); throw e; }
+    if (r.error) throw err(r.error, { text: r.text });
+    return r;
+  }
+  sample.json = async (prompt, opts) => { const r = await sample(prompt, Object.assign({}, opts || {}, { json: true })); return r.value; };
   const assets = {
-    upload: async (blob, o) => api("POST", "/api/assets", blob, { "content-type": (o && o.type) || blob.type || "application/octet-stream", "x-filename": blob.name || "" }),
-    list: async () => api("GET", "/api/assets"),
-    delete: async (ref) => api("DELETE", "/api/assets/" + String(ref).replace("/_blob/", "")),
-    // Ripristino lato server di un backup completo (documenti + allegati con gli stessi id). anteprima=true non scrive nulla.
-    restore: async (backup, modalita, anteprima) => { const r = await api("POST", "/api/restore?modalita=" + (modalita === "tutti" ? "tutti" : "mancanti") + (anteprima ? "&anteprima=1" : ""), backup); if (!anteprima) { clearTimeout(polling); await poll(); } return r; },
+    async upload(file) { const r = await fetch("/api/assets", { method: "POST", credentials: "same-origin", headers: { "content-type": file.type || "application/octet-stream", "x-filename": encodeURIComponent(file.name || "") }, body: file }); const j = await r.json().catch(() => ({})); if (!r.ok) throw err(j.error || "upload_failed"); return j; },
+    async delete(id) { return api("/api/assets/" + id, { method: "DELETE" }); },
+    async list() { return api("/api/assets"); },
+    async restore(data, modalita, anteprima) { return api("/api/restore?modalita=" + encodeURIComponent(modalita || "mancanti") + (anteprima ? "&anteprima=1" : ""), { method: "POST", body: data }); },
   };
-  const downloads = { save: async ({ filename, data }) => { const blob = data instanceof Blob ? data : new Blob([data]); const u = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = u; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 10000); return { status: "saved" }; } };
-  const user = { isOwner: async () => true, canEdit: async () => true, can: async () => true, id: async () => "owner", me: async () => ({ id: "owner", name: "" }), profiles: async () => ({}) };
-
-  const ready = (async () => { try { me = await api("GET", "/api/me"); } catch (e) { me = null; } if (me) { poll(); } })();
-  window.claude = { use: async (name) => { await ready; if (!me) return null; return { db: dbApi, user, sample: me.coach ? sample : null, assets, downloads }[name] || null; } };
-
-  // service worker (per l'icona sul telefono e l'apertura senza rete)
-  if ("serviceWorker" in navigator) { window.addEventListener("load", () => { navigator.serviceWorker.register("/sw.js").catch(() => {}); }); }
-  // pulsante "Esci" e avviso Coach non configurato, dentro Impostazioni
-  window.addEventListener("load", async () => {
-    await ready; const box = document.querySelector("#impostazioni .inner"); if (!box) return;
-    const row = document.createElement("div"); row.className = "row";
-    const b = document.createElement("button"); b.className = "small"; b.textContent = "Esci da questo dispositivo"; b.addEventListener("click", async () => { try { await fetch("/api/logout", { method: "POST", credentials: "same-origin" }); } catch (e) {} location.href = "/login.html"; }); row.appendChild(b);
-    const info = document.createElement("span"); info.className = "tiny"; info.textContent = me && me.coach ? "Coach: configurato (" + me.model + ")" : "Coach: non configurato sul server (manca la chiave API)"; row.appendChild(info);
-    box.appendChild(row);
-  });
+  const downloads = { async save(o) { const blob = new Blob([o.data], { type: "application/json" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = o.filename || "backup.json"; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000); return { status: "saved" }; } };
+  async function leggiInfo() { if (info) return info; try { info = await api("/api/me"); } catch (e) { info = { ok: false, coach: false, servizi: {} }; } return info; }
+  window.claude = {
+    async use(nome) {
+      const i = await leggiInfo();
+      if (nome === "db") { if (!primaLettura) await aggiorna(); avviaPoll(); return db; }
+      if (nome === "user") return user;
+      if (nome === "sample") return i.coach ? sample : null;
+      if (nome === "assets") return assets;
+      if (nome === "downloads") return downloads;
+      return null;
+    },
+    info: leggiInfo,
+    async logout() { await api("/api/logout", { method: "POST" }); location.href = "/login.html"; },
+  };
 })();
